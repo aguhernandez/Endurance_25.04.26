@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const HUB_FRONTEND_URL = import.meta.env.VITE_HUB_FRONTEND_URL || 'https://hub.asciende.pro';
+const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyoobqhlmlnuvl.supabase.co';
 const SESSION_TOKEN_KEY = 'hub_session_token';
 
 export type MembershipSlug = 'inicia' | 'intermediate' | 'pro';
@@ -117,20 +118,55 @@ export function useSatelliteAuth() {
     }
   };
 
+  const loginWithCredentials = async (email: string, password: string): Promise<void> => {
+    const res = await fetch(`${HUB_API_URL}/functions/v1/academy-auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!res.ok) {
+      let message = 'Authentication failed';
+      try {
+        const body = await res.json();
+        message = body.error || body.message || message;
+      } catch {}
+      throw new Error(message);
+    }
+
+    const data = await res.json();
+    const token: string = data.token || data.session_token || data.access_token;
+    if (!token) throw new Error('No token received from Hub');
+
+    localStorage.setItem(SESSION_TOKEN_KEY, token);
+
+    const payload = decodeJwtPayload(token);
+    if (!payload || isTokenExpired(payload)) {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+      throw new Error('Received invalid or expired token');
+    }
+
+    const hubUser = extractUserFromPayload(payload);
+    if (!hubUser) {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+      throw new Error('Could not extract user from token');
+    }
+
+    setUser(hubUser);
+  };
+
   const login = () => {
     const currentUrl = window.location.href.split('?')[0];
     const hubAuthUrl = `${HUB_FRONTEND_URL}?redirect=${encodeURIComponent(currentUrl)}`;
-    console.log('[Auth] Redirecting to HUB auth:', hubAuthUrl);
     window.location.href = hubAuthUrl;
   };
 
   const logout = () => {
     localStorage.removeItem(SESSION_TOKEN_KEY);
     setUser(null);
-    window.location.href = HUB_FRONTEND_URL;
   };
 
   const hasToken = user !== null;
 
-  return { user, loading, hasToken, authError, login, logout };
+  return { user, loading, hasToken, authError, login, logout, loginWithCredentials };
 }

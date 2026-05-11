@@ -14,12 +14,14 @@ import CalendarView from './components/CalendarView';
 import WeeklySummaryView from './components/WeeklySummaryView';
 import ProgramTemplates from './components/templates/ProgramTemplates';
 import PublicLanding from './components/PublicLanding';
+import LoginModal from './components/auth/LoginModal';
 
 type View = 'dashboard' | 'settings' | 'athletes' | 'library' | 'reporting' | 'atp' | 'calendar' | 'weekly' | 'templates';
 
 function AppContent() {
-  const { user, profile, loading, isDevMode, login, logout, setDevProfile } = useAuth();
+  const { user, profile, loading, isDevMode, logout, setDevProfile } = useAuth();
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   if (loading) {
     return (
@@ -38,11 +40,21 @@ function AppContent() {
 
   // Show public landing when not authenticated
   if (!user && !isDevMode) {
-    return <PublicLanding onLogin={login} />;
+    return (
+      <>
+        <PublicLanding onLogin={() => setLoginModalOpen(true)} />
+        <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      </>
+    );
   }
 
   if (!user) {
-    return <PublicLanding onLogin={login} />;
+    return (
+      <>
+        <PublicLanding onLogin={() => setLoginModalOpen(true)} />
+        <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      </>
+    );
   }
 
   if (user && !profile) {
