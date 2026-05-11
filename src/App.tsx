@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import AdminDashboard from './components/AdminDashboard';
@@ -13,23 +13,21 @@ import WorkoutLibrary from './components/library/WorkoutLibrary';
 import CalendarView from './components/CalendarView';
 import WeeklySummaryView from './components/WeeklySummaryView';
 import ProgramTemplates from './components/templates/ProgramTemplates';
+import PublicLanding from './components/PublicLanding';
 
 type View = 'dashboard' | 'settings' | 'athletes' | 'library' | 'reporting' | 'atp' | 'calendar' | 'weekly' | 'templates';
 
 function AppContent() {
-  const { user, profile, loading, hasToken, isDevMode, login, logout, setDevProfile } = useAuth();
+  const { user, profile, loading, isDevMode, login, logout, setDevProfile } = useAuth();
   const [currentView, setCurrentView] = useState<View>('dashboard');
-
-  useEffect(() => {
-    if (!loading && !user && !hasToken && !isDevMode) {
-      login();
-    }
-  }, [user, loading, hasToken, isDevMode, login]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#514163] to-[#3a2e4a] flex items-center justify-center">
-        <div className="text-white text-2xl font-semibold">Loading...</div>
+      <div className="min-h-screen bg-[#080c10] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <img src="/logo_transp.png" alt="Asciende" className="h-12 w-auto opacity-60 animate-pulse" />
+          <div className="text-gray-500 text-sm font-body tracking-widest uppercase">Loading...</div>
+        </div>
       </div>
     );
   }
@@ -38,59 +36,36 @@ function AppContent() {
     return <LocalDevMode onProfileSelected={setDevProfile} />;
   }
 
+  // Show public landing when not authenticated
   if (!user && !isDevMode) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#514163] to-[#3a2e4a] flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md mx-4">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-blue-600 text-3xl">🔐</span>
-            </div>
-            <h2 className="text-2xl font-bold text-[#514163] mb-2">Authentication Required</h2>
-            <p className="text-gray-600 mb-4">
-              Redirecting to HUB for authentication...
-            </p>
-            <p className="text-sm text-gray-500">
-              If you're not redirected automatically, click the button below.
-            </p>
-            <button
-              onClick={login}
-              className="mt-6 bg-[#514163] hover:bg-[#3d2f4a] text-white px-6 py-2 rounded-lg transition font-medium"
-            >
-              Go to HUB Login
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return <PublicLanding onLogin={login} />;
   }
 
   if (!user) {
-    return null;
+    return <PublicLanding onLogin={login} />;
   }
 
   if (user && !profile) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#514163] to-[#3a2e4a] flex items-center justify-center">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md mx-4">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-red-600 text-3xl">⚠</span>
-            </div>
-            <h2 className="text-2xl font-bold text-[#514163] mb-2">No Local Profile Found</h2>
-            <p className="text-gray-600 mb-4">
-              You are authenticated in the HUB, but you don't have a local profile in this satellite application.
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              Please contact your administrator to create a profile for you.
-            </p>
-            <button
-              onClick={logout}
-              className="bg-[#514163] hover:bg-[#3d2f4a] text-white px-6 py-2 rounded-lg transition font-medium"
-            >
-              Return to HUB
-            </button>
+      <div className="min-h-screen bg-[#080c10] flex items-center justify-center p-4">
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 max-w-md mx-4 text-center backdrop-blur-sm">
+          <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
+            <span className="text-red-400 text-xl">!</span>
           </div>
+          <h2 className="text-xl font-heading text-white mb-2">No Profile Found</h2>
+          <p className="text-gray-400 text-sm font-body leading-relaxed mb-3">
+            You are authenticated, but your profile has not been set up in this application.
+          </p>
+          <p className="text-gray-500 text-xs font-body mb-6">
+            Please contact your administrator to create a profile for you.
+          </p>
+          <button
+            onClick={logout}
+            className="px-6 py-2.5 rounded-xl text-sm font-body font-semibold text-[#080c10] transition-all hover:scale-105"
+            style={{ backgroundColor: '#fdda36' }}
+          >
+            Return to HUB
+          </button>
         </div>
       </div>
     );
