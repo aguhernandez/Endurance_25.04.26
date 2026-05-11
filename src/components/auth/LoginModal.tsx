@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ const HUB_FRONTEND_URL = import.meta.env.VITE_HUB_FRONTEND_URL || 'https://hub.a
 
 export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const { loginWithCredentials } = useAuth();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -85,8 +87,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           {/* Header */}
           <div className="mb-8">
             <img src="/logo_transp.png" alt="Asciende" className="h-8 w-auto mb-5 opacity-80" />
-            <h2 className="font-heading text-2xl text-white mb-1">Welcome back</h2>
-            <p className="text-sm font-body text-gray-500">Sign in to your Asciende account</p>
+            <h2 className="font-heading text-2xl text-white mb-1">{t('login.title')}</h2>
+            <p className="text-sm font-body text-gray-500">{t('login.subtitle')}</p>
           </div>
 
           {/* Form */}
@@ -94,7 +96,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             {/* Email */}
             <div>
               <label className="block text-xs font-body text-gray-400 mb-1.5 uppercase tracking-wider">
-                Email
+                {t('login.email')}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
@@ -119,7 +121,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             {/* Password */}
             <div>
               <label className="block text-xs font-body text-gray-400 mb-1.5 uppercase tracking-wider">
-                Password
+                {t('login.password')}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
@@ -168,11 +170,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Signing in...
+                  {t('login.submitting')}
                 </>
               ) : (
                 <>
-                  Sign In
+                  {t('login.submit')}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -182,14 +184,14 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           {/* Footer */}
           <div className="mt-6 pt-6 border-t border-white/5 text-center">
             <p className="text-xs font-body text-gray-600">
-              Don't have an account?{' '}
+              {t('login.register')}{' '}
               <a
                 href={`${HUB_FRONTEND_URL}/register`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[#fdda36] hover:underline"
               >
-                Register on Hub
+                {t('login.registerLink')}
               </a>
             </p>
           </div>
