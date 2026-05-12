@@ -50,13 +50,8 @@ const WORKOUT_CATEGORIES = [
   { id: 'strength', label: 'Strength' },
 ];
 
-const TIMES = [
-  '05:00', '05:30', '06:00', '06:30', '07:00', '07:30',
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-  '11:00', '12:00', '13:00', '14:00', '15:00', '16:00',
-  '17:00', '17:30', '18:00', '18:30', '19:00', '19:30',
-  '20:00', '21:00',
-];
+const HOURS   = Array.from({ length: 24 }, (_, i) => i);
+const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -80,10 +75,9 @@ export default function ScheduleWorkoutModal({
   const [showFilters, setShowFilters] = useState(false);
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [scheduledTime, setScheduledTime] = useState<string>('');
-  const [showTimeDropdown, setShowTimeDropdown] = useState(false);
-  const [manualTime, setManualTime] = useState('');
-  const timeDropdownRef = useRef<HTMLDivElement>(null);
+  const [scheduledHour, setScheduledHour] = useState<string>('');
+  const [scheduledMinute, setScheduledMinute] = useState<string>('00');
+  const scheduledTime = scheduledHour !== '' ? `${scheduledHour.padStart(2,'0')}:${scheduledMinute.padStart(2,'0')}` : '';
 
   useEffect(() => {
     if (isOpen) {
@@ -101,15 +95,6 @@ export default function ScheduleWorkoutModal({
     }
   }, [isOpen, isCoach]);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (timeDropdownRef.current && !timeDropdownRef.current.contains(event.target as Node)) {
-        setShowTimeDropdown(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   async function loadWorkouts() {
     const { data } = await supabase
@@ -148,19 +133,6 @@ export default function ScheduleWorkoutModal({
     }
   }
 
-  function handleTimeSelect(time: string) {
-    setScheduledTime(time);
-    setManualTime('');
-    setShowTimeDropdown(false);
-  }
-
-  function handleManualTimeChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const val = e.target.value;
-    setManualTime(val);
-    if (/^\d{2}:\d{2}$/.test(val)) {
-      setScheduledTime(val);
-    }
-  }
 
   async function handleSchedule() {
     if (!selectedWorkout || !selectedDate) return;
@@ -403,55 +375,52 @@ export default function ScheduleWorkoutModal({
               <Clock size={11} />
               Start Time (optional)
             </p>
-            <div className="flex gap-2">
-              <div className="relative flex-1" ref={timeDropdownRef}>
-                <button
-                  onClick={() => setShowTimeDropdown(!showTimeDropdown)}
-                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white hover:border-gray-300 dark:hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#fdda36] transition"
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">Hour</p>
+                <select
+                  value={scheduledHour}
+                  onChange={e => setScheduledHour(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#fdda36] transition"
                 >
-                  <div className="flex items-center gap-2">
-                    <Clock size={14} className="text-gray-400" />
-                    <span className={scheduledTime ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>
-                      {scheduledTime || 'Select time'}
-                    </span>
-                  </div>
-                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${showTimeDropdown ? 'rotate-180' : ''}`} />
-                </button>
-                {showTimeDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
-                    {TIMES.map(t => (
-                      <button
-                        key={t}
-                        onClick={() => handleTimeSelect(t)}
-                        className={`w-full px-3.5 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition ${
-                          scheduledTime === t
-                            ? 'bg-[#fdda36]/10 text-[#514163] dark:text-yellow-300 font-medium'
-                            : 'text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  <option value="">—</option>
+                  {HOURS.map(h => (
+                    <option key={h} value={String(h)}>
+                      {String(h).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <input
-                type="text"
-                value={manualTime}
-                onChange={handleManualTimeChange}
-                placeholder="HH:MM"
-                maxLength={5}
-                className="w-24 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 text-center focus:outline-none focus:ring-2 focus:ring-[#fdda36]"
-              />
-              {scheduledTime && (
+              <span className="text-gray-400 dark:text-gray-500 font-bold mt-4">:</span>
+              <div className="flex-1">
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">Min</p>
+                <select
+                  value={scheduledMinute}
+                  onChange={e => setScheduledMinute(e.target.value)}
+                  disabled={scheduledHour === ''}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#fdda36] transition disabled:opacity-40"
+                >
+                  {MINUTES.map(m => (
+                    <option key={m} value={String(m)}>
+                      {String(m).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {scheduledHour !== '' && (
                 <button
-                  onClick={() => { setScheduledTime(''); setManualTime(''); }}
-                  className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                  onClick={() => { setScheduledHour(''); setScheduledMinute('00'); }}
+                  className="px-3 py-2.5 mt-4 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
                 >
                   <X size={14} />
                 </button>
               )}
             </div>
+            {scheduledHour !== '' && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                Scheduled at <span className="font-semibold text-gray-600 dark:text-gray-300">{scheduledTime}</span>
+              </p>
+            )}
           </div>
         </div>
 
