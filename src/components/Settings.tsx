@@ -3,8 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   Settings as SettingsIcon,
-  LogOut, User, Shield, Code2, CheckCircle, AlertCircle,
-  ChevronRight, Mail, Tag, Monitor, Globe,
+  LogOut, User, Shield, CheckCircle, AlertCircle,
+  ChevronRight, Mail, Tag, Globe,
   Sparkles, ToggleLeft, ToggleRight, Key, Eye, EyeOff, Save,
   BarChart2,
 } from 'lucide-react';
@@ -47,19 +47,9 @@ async function saveAdminConfig(hubToken: string, key: string, value: string): Pr
 }
 
 export default function Settings() {
-  const { logout, profile, user, isDevMode, toggleDevMode, refreshProfile } = useAuth();
+  const { logout, profile, user, refreshProfile } = useAuth();
   const { t } = useLanguage();
   const isAdmin = profile?.role === 'admin';
-
-  const handleToggleDevMode = () => {
-    const newMode = !isDevMode;
-    const confirmMessage = newMode
-      ? 'Switch to Development Mode? You will be able to select test profiles without HUB authentication.'
-      : 'Switch to Production Mode? You will need to authenticate through the HUB. The page will reload.';
-    if (confirm(confirmMessage)) {
-      toggleDevMode(newMode);
-    }
-  };
 
   const roleLabel = profile?.role === 'coach' ? 'Coach' : profile?.role === 'admin' ? 'Admin' : 'Athlete';
   const roleColor = profile?.role === 'coach'
@@ -175,71 +165,6 @@ export default function Settings() {
 
       {/* Zone System Preference Card */}
       <ZoneSystemCard profileId={profile?.id || ''} currentZoneSystem={profile?.preferred_zone_system ?? '5'} onSaved={refreshProfile} />
-
-      {/* Dev Mode Card */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
-        <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-              <Code2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">Developer Settings</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Testing and development configuration</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-6 py-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                isDevMode ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-gray-100 dark:bg-gray-800'
-              }`}>
-                <Monitor className={`w-4 h-4 ${isDevMode ? 'text-amber-600' : 'text-gray-500 dark:text-gray-400'}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">Local Development Mode</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {isDevMode
-                    ? 'Active — Select test profiles without HUB authentication'
-                    : 'Inactive — Using HUB authentication (production)'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleToggleDevMode}
-              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ${
-                isDevMode ? 'bg-amber-500' : 'bg-gray-200 dark:bg-gray-700'
-              }`}
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-                  isDevMode ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-
-          {isDevMode && (
-            <div className="mt-4 flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-800">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                <span className="font-semibold">Dev Mode Active:</span> Switch between Admin, Coach, and Athlete profiles for testing. HUB connection is disabled.
-              </p>
-            </div>
-          )}
-
-          {!isDevMode && (
-            <div className="mt-4 flex items-start gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-800">
-              <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-emerald-700 dark:text-emerald-400">
-                <span className="font-semibold">Production Mode:</span> Authenticated via hub.asciende.pro. All users must go through the HUB portal.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Sign Out */}
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
