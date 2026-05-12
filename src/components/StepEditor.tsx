@@ -227,13 +227,37 @@ export default function StepEditor({
                 </div>
               </div>
             ) : (
-              <div className="flex-[2] min-w-[100px]">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Distance (m)</p>
-                <input
-                  type="number" value={step.duration_value || 0} min={0}
-                  onChange={e => onUpdate({ ...step, duration_value: parseInt(e.target.value) || 0 })}
-                  className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none"
-                />
+              <div className="flex-[2] min-w-[140px]">
+                {(() => {
+                  const totalM = step.duration_value || 0;
+                  const kmVal = Math.floor(totalM / 1000);
+                  const mRem = totalM % 1000;
+                  const distLabel = totalM > 0
+                    ? totalM >= 1000 ? `${(totalM / 1000).toFixed(2).replace(/\.?0+$/, '')} km` : `${totalM} m`
+                    : '';
+                  return (
+                    <>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        Distance{distLabel ? ` · ${distLabel}` : ''}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        {[
+                          { label: 'km', val: kmVal, max: 999, set: (v: number) => onUpdate({ ...step, duration_value: v * 1000 + mRem }) },
+                          { label: 'm',  val: mRem,  max: 999, set: (v: number) => onUpdate({ ...step, duration_value: kmVal * 1000 + Math.max(0, Math.min(999, v)) }) },
+                        ].map(({ label, val, max, set }) => (
+                          <div key={label} className="flex items-center gap-0.5 flex-1">
+                            <input
+                              type="number" min={0} max={max} value={val}
+                              onChange={e => set(Math.max(0, Math.min(max, parseInt(e.target.value) || 0)))}
+                              className="w-full text-xs text-center px-1.5 py-1.5 border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none"
+                            />
+                            <span className="text-[10px] text-gray-400 flex-shrink-0 w-5">{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
