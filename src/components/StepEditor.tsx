@@ -191,19 +191,50 @@ export default function StepEditor({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Duration ({step.duration_type === 'time' ? 'seconds' : 'meters'})
-              </label>
-              <input
-                type="number"
-                value={step.duration_value || 0}
-                onChange={(e) => onUpdate({ ...step, duration_value: parseInt(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                min="0"
-              />
-              {step.duration_type === 'time' && step.duration_value ? (
-                <p className="text-xs text-gray-500 mt-1">{formatDuration('time', step.duration_value)}</p>
-              ) : null}
+              {step.duration_type === 'time' ? (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { label: 'h', max: 23, getValue: (v: number) => Math.floor(v / 3600), fromParts: (h: number, cur: number) => h * 3600 + (cur % 3600) },
+                      { label: 'm', max: 59, getValue: (v: number) => Math.floor((v % 3600) / 60), fromParts: (m: number, cur: number) => Math.floor(cur / 3600) * 3600 + m * 60 + (cur % 60) },
+                      { label: 's', max: 59, getValue: (v: number) => v % 60, fromParts: (s: number, cur: number) => Math.floor(cur / 3600) * 3600 + Math.floor((cur % 3600) / 60) * 60 + s },
+                    ].map(({ label, max, getValue, fromParts }) => {
+                      const cur = step.duration_value || 0;
+                      return (
+                        <div key={label} className="flex items-center gap-0.5 flex-1">
+                          <input
+                            type="number"
+                            min={0}
+                            max={max}
+                            value={getValue(cur)}
+                            onChange={(e) => {
+                              const v = Math.max(0, Math.min(max, parseInt(e.target.value) || 0));
+                              onUpdate({ ...step, duration_value: fromParts(v, cur) });
+                            }}
+                            className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-center text-sm"
+                          />
+                          <span className="text-xs font-medium text-gray-500 w-4 flex-shrink-0">{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(step.duration_value || 0) > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">{formatDuration('time', step.duration_value!)}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration (meters)</label>
+                  <input
+                    type="number"
+                    value={step.duration_value || 0}
+                    onChange={(e) => onUpdate({ ...step, duration_value: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                    min="0"
+                  />
+                </>
+              )}
             </div>
           </div>
 
