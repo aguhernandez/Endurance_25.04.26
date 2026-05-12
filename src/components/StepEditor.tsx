@@ -28,6 +28,19 @@ const STEP_TYPES: { value: StepType; label: string }[] = [
   { value: 'cooldown', label: 'Cool Down' },
 ];
 
+const RPE_OPTIONS = [
+  { value: 1,  label: 'Very Easy',  color: 'bg-gray-100 border-gray-400 text-gray-700' },
+  { value: 2,  label: 'Easy',       color: 'bg-blue-100 border-blue-400 text-blue-700' },
+  { value: 3,  label: 'Easy',       color: 'bg-blue-100 border-blue-400 text-blue-700' },
+  { value: 4,  label: 'Moderate',   color: 'bg-green-100 border-green-400 text-green-700' },
+  { value: 5,  label: 'Moderate',   color: 'bg-green-100 border-green-400 text-green-700' },
+  { value: 6,  label: 'Hard',       color: 'bg-yellow-100 border-yellow-400 text-yellow-700' },
+  { value: 7,  label: 'Hard',       color: 'bg-orange-100 border-orange-400 text-orange-700' },
+  { value: 8,  label: 'Very Hard',  color: 'bg-red-100 border-red-400 text-red-700' },
+  { value: 9,  label: 'Very Hard',  color: 'bg-red-200 border-red-500 text-red-800' },
+  { value: 10, label: 'Max',        color: 'bg-red-300 border-red-600 text-red-900' },
+];
+
 const ZONE_COLORS: Record<number, string> = {
   1: 'bg-gray-100 border-gray-300 text-gray-700',
   2: 'bg-blue-100 border-blue-300 text-blue-700',
@@ -286,6 +299,39 @@ export default function StepEditor({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-sm" placeholder="Max" min="0" />
                 </div>
               </div>
+            </div>
+          )}
+
+          {step.target_type === 'rpe' && (
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <span className="text-base">&#128337;</span> RPE Target
+              </label>
+              <div className="grid grid-cols-5 gap-2">
+                {RPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onUpdate({ ...step, target_min_value: opt.value, target_max_value: opt.value })}
+                    className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl border-2 transition text-center ${
+                      step.target_min_value === opt.value
+                        ? `${opt.color} border-current font-semibold shadow-sm`
+                        : 'bg-white border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-lg font-bold leading-none">{opt.value}</span>
+                    <span className={`text-[10px] leading-tight ${step.target_min_value === opt.value ? '' : 'text-gray-400'}`}>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+              {step.target_min_value !== undefined && (
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200">
+                  <span className="text-sm text-gray-600">Selected RPE</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {step.target_min_value} — {RPE_OPTIONS.find(o => o.value === step.target_min_value)?.label}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
