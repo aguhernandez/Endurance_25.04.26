@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { WorkoutStep, StepType, DurationType, TargetType, Sport } from '../types/workout';
 import { HRZone, PowerZone, PaceZone } from '../types/workout';
-import { ArrowUp, ArrowDown, Trash2, Zap, Heart, Timer } from 'lucide-react';
+import { ArrowUp, ArrowDown, Trash2, Zap, Heart, Timer, ChevronDown } from 'lucide-react';
 import { formatPace, formatPacePer100m } from '../lib/calculations';
 
 interface StepEditorProps {
@@ -197,24 +197,17 @@ export default function StepEditor({
           {step.target_type === 'hr' && (
             <div className="space-y-3">
               {hrZones.length > 0 ? (
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                    <Heart size={14} className="text-red-500" /> Select HR Zone
-                  </label>
-                  <div className="grid grid-cols-1 gap-2">
-                    {hrZones.map((zone) => (
-                      <button key={zone.zone} type="button" onClick={() => handleHRZoneSelect(zone)}
-                        className={`flex items-center justify-between px-4 py-3 rounded-lg border-2 text-left transition hover:shadow-sm ${
-                          step.target_zone === zone.zone ? `${ZONE_COLORS[zone.zone]} border-current font-semibold shadow-sm` : 'bg-white border-gray-200 hover:border-gray-300'
-                        }`}>
-                        <span className="font-medium text-sm">{zone.name}</span>
-                        {zone.min !== undefined && zone.max !== undefined && (
-                          <span className="text-sm font-bold">{zone.min} – {zone.max} bpm</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <ZoneDropdown
+                  label="Select HR Zone"
+                  icon={<Heart size={14} className="text-red-500" />}
+                  selectedZone={step.target_zone}
+                  options={hrZones.map(z => ({
+                    zone: z.zone,
+                    name: z.name,
+                    detail: z.min !== undefined && z.max !== undefined ? `${z.min}–${z.max} bpm` : undefined,
+                  }))}
+                  onSelect={(z) => handleHRZoneSelect(hrZones.find(h => h.zone === z)!)}
+                />
               ) : (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                   <p className="text-sm text-amber-700 font-medium">No HR zones from LAB for this athlete.</p>
@@ -248,29 +241,19 @@ export default function StepEditor({
           {step.target_type === 'power' && sport === 'cycling' && (
             <div className="space-y-3">
               {powerZones.length > 0 ? (
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                    <Zap size={14} className="text-yellow-500" /> Select Power Zone
-                  </label>
-                  <div className="grid grid-cols-1 gap-2">
-                    {powerZones.map((zone) => (
-                      <button key={zone.zone} type="button" onClick={() => handlePowerZoneSelect(zone)}
-                        className={`flex items-center justify-between px-4 py-3 rounded-lg border-2 text-left transition hover:shadow-sm ${
-                          step.target_zone === zone.zone ? `${ZONE_COLORS[zone.zone]} border-current font-semibold shadow-sm` : 'bg-white border-gray-200 hover:border-gray-300'
-                        }`}>
-                        <span className="font-medium text-sm">{zone.name}</span>
-                        <div className="text-right">
-                          {zone.minPercent !== undefined && zone.maxPercent !== undefined && (
-                            <span className="text-sm font-bold">{zone.minPercent}–{zone.maxPercent}% FTP</span>
-                          )}
-                          {zone.minWatts !== undefined && zone.maxWatts !== undefined && (
-                            <span className="text-xs text-gray-500 ml-2">({zone.minWatts}–{zone.maxWatts}W)</span>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <ZoneDropdown
+                  label="Select Power Zone"
+                  icon={<Zap size={14} className="text-yellow-500" />}
+                  selectedZone={step.target_zone}
+                  options={powerZones.map(z => ({
+                    zone: z.zone,
+                    name: z.name,
+                    detail: z.minPercent !== undefined && z.maxPercent !== undefined
+                      ? `${z.minPercent}–${z.maxPercent}% FTP${z.minWatts !== undefined ? ` (${z.minWatts}–${z.maxWatts}W)` : ''}`
+                      : undefined,
+                  }))}
+                  onSelect={(z) => handlePowerZoneSelect(powerZones.find(p => p.zone === z)!)}
+                />
               ) : (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                   <p className="text-sm text-amber-700 font-medium">No power zones configured.</p>
@@ -371,6 +354,88 @@ export default function StepEditor({
               placeholder="Number of repetitions"
             />
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Zone Dropdown ─────────────────────────────────────────────────────────────
+
+interface ZoneDropdownOption {
+  zone: number;
+  name: string;
+  detail?: string;
+}
+
+function ZoneDropdown({
+  label,
+  icon,
+  selectedZone,
+  options,
+  onSelect,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  selectedZone?: number;
+  options: ZoneDropdownOption[];
+  onSelect: (zone: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selected = options.find(o => o.zone === selectedZone);
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1.5">
+        {icon} {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border-2 text-left transition ${
+          selected
+            ? `${ZONE_COLORS[selected.zone]} border-current`
+            : 'bg-white border-gray-200 hover:border-gray-300'
+        }`}
+      >
+        <span className="font-medium text-sm">
+          {selected ? selected.name : 'Choose a zone...'}
+        </span>
+        <div className="flex items-center gap-2">
+          {selected?.detail && (
+            <span className="text-sm font-bold">{selected.detail}</span>
+          )}
+          <ChevronDown size={16} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+          {options.map((opt) => (
+            <button
+              key={opt.zone}
+              type="button"
+              onClick={() => { onSelect(opt.zone); setOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 text-left transition hover:bg-gray-50 border-b border-gray-100 last:border-0 ${
+                selectedZone === opt.zone ? `${ZONE_COLORS[opt.zone]} font-semibold` : ''
+              }`}
+            >
+              <span className="text-sm font-medium">{opt.name}</span>
+              {opt.detail && (
+                <span className="text-sm font-bold text-gray-600">{opt.detail}</span>
+              )}
+            </button>
+          ))}
         </div>
       )}
     </div>
