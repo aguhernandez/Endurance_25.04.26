@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, ChevronRight, Mountain, Clock } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, ChevronRight, Mountain, Clock, ChevronDown } from 'lucide-react';
 
 interface TrainingTypeModalProps {
   isOpen: boolean;
@@ -82,6 +82,18 @@ export default function TrainingTypeModal({ isOpen, onClose, onSelect, selectedD
   const [selectedSub, setSelectedSub] = useState<typeof SPORTS[0]['subs'][0] | null>(null);
   const [elevationM, setElevationM] = useState<string>('');
   const [scheduledTime, setScheduledTime] = useState<string>('');
+  const [showTimeDropdown, setShowTimeDropdown] = useState(false);
+  const timeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (timeDropdownRef.current && !timeDropdownRef.current.contains(e.target as Node)) {
+        setShowTimeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const reset = () => {
     setStep('sport');
@@ -89,6 +101,7 @@ export default function TrainingTypeModal({ isOpen, onClose, onSelect, selectedD
     setSelectedSub(null);
     setElevationM('');
     setScheduledTime('');
+    setShowTimeDropdown(false);
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -217,31 +230,52 @@ export default function TrainingTypeModal({ isOpen, onClose, onSelect, selectedD
               </div>
 
               <div className="space-y-4">
-                <div>
+                <div ref={timeDropdownRef} className="relative">
                   <label className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
                     <Clock size={12} />
                     Start Time (optional)
                   </label>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {TIMES.map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setScheduledTime(scheduledTime === t ? '' : t)}
-                        className={`py-1.5 rounded-lg text-xs font-medium transition border ${
-                          scheduledTime === t
-                            ? 'text-white border-transparent'
-                            : 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                        }`}
-                        style={scheduledTime === t ? { background: selectedSport.accent, borderColor: selectedSport.accent } : {}}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  {scheduledTime && (
-                    <p className="text-xs mt-1.5" style={{ color: selectedSport.accent }}>
-                      Scheduled for {scheduledTime}
-                    </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowTimeDropdown(v => !v)}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm hover:border-gray-300 dark:hover:border-gray-600 focus:outline-none transition"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className={scheduledTime ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-400'}>
+                        {scheduledTime || 'Select time...'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {scheduledTime && (
+                        <span
+                          onClick={(e) => { e.stopPropagation(); setScheduledTime(''); }}
+                          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-0.5 rounded transition cursor-pointer"
+                        >
+                          <X size={12} />
+                        </span>
+                      )}
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${showTimeDropdown ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
+                  {showTimeDropdown && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                      {TIMES.map(t => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => { setScheduledTime(scheduledTime === t ? '' : t); setShowTimeDropdown(false); }}
+                          className={`w-full px-4 py-2.5 text-left text-sm border-b border-gray-100 dark:border-gray-700 last:border-0 transition ${
+                            scheduledTime === t
+                              ? 'font-semibold'
+                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                          }`}
+                          style={scheduledTime === t ? { color: selectedSport.accent, background: `${selectedSport.accent}15` } : {}}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
 
