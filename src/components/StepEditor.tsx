@@ -117,6 +117,7 @@ export default function StepEditor({
   else if (selectedHRZone) summaryParts.push(`${selectedHRZone.name} · ${selectedHRZone.min}–${selectedHRZone.max} bpm`);
   else if (selectedPaceZone) summaryParts.push(selectedPaceZone.name);
   else if (step.target_type === 'rpe' && step.target_min_value) summaryParts.push(`RPE ${step.target_min_value}`);
+  if (sport === 'cycling' && step.cadence_rpm) summaryParts.push(`${step.cadence_rpm} rpm`);
 
   const dur = step.duration_value || 0;
   const hVal = Math.floor(dur / 3600);
@@ -348,6 +349,25 @@ export default function StepEditor({
               {step.target_min_value !== undefined && (
                 <p className="text-[10px] text-gray-400 mt-1">RPE {step.target_min_value} — {RPE_LABELS[step.target_min_value]}</p>
               )}
+            </div>
+          )}
+
+          {/* Cadence — cycling only */}
+          {sport === 'cycling' && (
+            <div className="flex items-center gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex-shrink-0">Cadence</p>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={step.cadence_rpm || ''}
+                  onChange={e => onUpdate({ ...step, cadence_rpm: parseInt(e.target.value) || undefined })}
+                  placeholder="60–110 RPM (optional)"
+                  min={30}
+                  max={140}
+                  className="w-44 text-xs px-2 py-1.5 pr-12 border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-blue-400 outline-none placeholder-gray-300"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">RPM</span>
+              </div>
             </div>
           )}
 

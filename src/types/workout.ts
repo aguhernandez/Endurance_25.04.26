@@ -38,6 +38,7 @@ export interface WorkoutStep {
   repeat_times?: number;
   repeat_rest_step_id?: string;
   repeat_group_id?: string;
+  cadence_rpm?: number;
   created_at: string;
 }
 
