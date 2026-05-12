@@ -11,6 +11,7 @@ function expandForPreview(steps: Partial<WorkoutStep>[]): Partial<WorkoutStep>[]
     if (processed.has(i)) continue;
     const step = steps[i];
 
+    // Paired interval repeat (two steps sharing a repeat_group_id)
     if (step.repeat_group_id && step.repeat_times && step.repeat_times > 1) {
       const partnerIdx = steps.findIndex((s, idx) =>
         idx !== i && s.repeat_group_id === step.repeat_group_id && !processed.has(idx)
@@ -28,6 +29,16 @@ function expandForPreview(steps: Partial<WorkoutStep>[]): Partial<WorkoutStep>[]
         continue;
       }
     }
+
+    // Solo step repeat (single step with repeat_times, no pair partner)
+    if (!step.repeat_group_id && step.repeat_times && step.repeat_times > 1) {
+      for (let r = 0; r < step.repeat_times; r++) {
+        result.push({ ...step, repeat_times: undefined });
+      }
+      processed.add(i);
+      continue;
+    }
+
     result.push(step);
     processed.add(i);
   }

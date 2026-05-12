@@ -43,6 +43,7 @@ function expandStepsForRepeatPairs(steps: Partial<WorkoutStep>[]): Partial<Worko
     if (processed.has(i)) continue;
     const step = steps[i];
 
+    // Paired interval repeat (two steps sharing a repeat_group_id)
     if (step.repeat_group_id && step.repeat_times && step.repeat_times > 1) {
       const pairPartner = steps.findIndex((s, idx) =>
         idx !== i && s.repeat_group_id === step.repeat_group_id && !processed.has(idx)
@@ -61,6 +62,15 @@ function expandStepsForRepeatPairs(steps: Partial<WorkoutStep>[]): Partial<Worko
         processed.add(pairPartner);
         continue;
       }
+    }
+
+    // Solo step repeat (single step with repeat_times, no pair partner)
+    if (!step.repeat_group_id && step.repeat_times && step.repeat_times > 1) {
+      for (let r = 0; r < step.repeat_times; r++) {
+        result.push({ ...step, repeat_times: undefined });
+      }
+      processed.add(i);
+      continue;
     }
 
     result.push(step);
@@ -328,7 +338,11 @@ export default function WorkoutBuilder({
   };
 
   const totalMin = Math.round(
-    steps.reduce((s, step) => s + (step.duration_type === 'time' ? (step.duration_value || 0) : 300), 0) / 60
+    steps.reduce((s, step) => {
+      const base = step.duration_type === 'time' ? (step.duration_value || 0) : 300;
+      const times = (!step.repeat_group_id && step.repeat_times && step.repeat_times > 1) ? step.repeat_times : 1;
+      return s + base * times;
+    }, 0) / 60
   );
 
   return (
