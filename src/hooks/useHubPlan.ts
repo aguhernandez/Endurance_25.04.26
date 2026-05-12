@@ -122,11 +122,15 @@ function buildStepsDescription(workout: Workout, steps: WorkoutStep[], computedI
       const groupSteps = grouped.get(groupKey)!;
 
       if (step.repeat_group_id && step.repeat_times && step.repeat_times > 1) {
-        const innerLines = groupSteps.map(s => `  ${s.step_type}: ${formatStepDuration(s)} @ ${formatStepTarget(s)}`);
+        const innerLines = groupSteps.map(s => {
+          const cadencePart = s.cadence_rpm ? ` · ${s.cadence_rpm} rpm` : '';
+          return `  ${s.step_type}: ${formatStepDuration(s)} @ ${formatStepTarget(s)}${cadencePart}`;
+        });
         stepLines.push(`${step.repeat_times}x:`);
         stepLines.push(...innerLines);
       } else {
-        stepLines.push(`${step.step_type}: ${formatStepDuration(step)} @ ${formatStepTarget(step)}`);
+        const cadencePart = step.cadence_rpm ? ` · ${step.cadence_rpm} rpm` : '';
+        stepLines.push(`${step.step_type}: ${formatStepDuration(step)} @ ${formatStepTarget(step)}${cadencePart}`);
       }
     }
 

@@ -287,6 +287,7 @@ export default function WorkoutBuilder({
         target_zone: step.target_zone,
         repeat_times: step.repeat_times,
         repeat_group_id: step.repeat_group_id,
+        cadence_rpm: step.cadence_rpm,
       }));
 
       const { error: stepsError } = await supabase.from('workout_steps').insert(stepsToInsert);
