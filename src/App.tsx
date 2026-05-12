@@ -60,24 +60,11 @@ function AppContent() {
   if (user && !profile) {
     return (
       <div className="min-h-screen bg-[#080c10] flex items-center justify-center p-4">
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 max-w-md mx-4 text-center backdrop-blur-sm">
-          <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
-            <span className="text-red-400 text-xl">!</span>
+        <div className="flex flex-col items-center gap-6">
+          <img src="/logo_transp.png" alt="Asciende" className="h-14 w-auto opacity-80 animate-pulse" />
+          <div className="text-center">
+            <p className="text-gray-400 text-sm font-body tracking-widest uppercase">Syncing with Hub...</p>
           </div>
-          <h2 className="text-xl font-heading text-white mb-2">No Profile Found</h2>
-          <p className="text-gray-400 text-sm font-body leading-relaxed mb-3">
-            You are authenticated, but your profile has not been set up in this application.
-          </p>
-          <p className="text-gray-500 text-xs font-body mb-6">
-            Please contact your administrator to create a profile for you.
-          </p>
-          <button
-            onClick={logout}
-            className="px-6 py-2.5 rounded-xl text-sm font-body font-semibold text-[#080c10] transition-all hover:scale-105"
-            style={{ backgroundColor: '#fdda36' }}
-          >
-            Return to HUB
-          </button>
         </div>
       </div>
     );
