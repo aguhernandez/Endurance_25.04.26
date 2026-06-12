@@ -14,6 +14,7 @@ import AIBlockGenerator from '../ai/AIBlockGenerator';
 import AdaptationPanel from './AdaptationPanel';
 import MicrocycleAdaptationView from './MicrocycleAdaptationView';
 import { supabase } from '../../lib/supabase';
+import { useCoachAthletes } from '../../hooks/useCoachAthletes';
 
 interface AthleteOption {
   id: string;
@@ -50,11 +51,14 @@ function paramsFromPlan(plan: ATPPlan): ATPParams {
 export default function ATPView({ isCoach }: ATPViewProps) {
   const { profile, user } = useAuth();
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
-  const [athletes, setAthletes] = useState<AthleteOption[]>([]);
-  const [athletesLoaded, setAthletesLoaded] = useState(false);
   const [showAIGenerator, setShowAIGenerator] = useState(false);
   const [liveParams, setLiveParams] = useState<Partial<ATPPlan> | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const coachHubId = isCoach ? user?.id : undefined;
+  const assignedAthletes = isCoach ? (user as any)?.assigned_athletes as string[] | undefined : undefined;
+  const { athletes: hubAthletes } = useCoachAthletes(coachHubId, assignedAthletes);
+  const athletes: AthleteOption[] = hubAthletes.map(a => ({ id: a.id, full_name: a.full_name, email: a.email }));
 
   const athleteId = isCoach ? (selectedAthleteId || profile?.id || null) : (profile?.id || null);
   const selectedAthlete = athletes.find(a => a.id === athleteId);
@@ -78,20 +82,6 @@ export default function ATPView({ isCoach }: ATPViewProps) {
     : !isCoach && !hasAIAccess(user?.membership_slug)
     ? 'Requires Asciende Intermediate or Asciende Pro membership'
     : null;
-
-  useMemo(() => {
-    if (!isCoach || athletesLoaded) return;
-    async function loadAthletes() {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('role', 'athlete')
-        .order('full_name', { ascending: true });
-      setAthletes(data || []);
-      setAthletesLoaded(true);
-    }
-    loadAthletes();
-  }, [isCoach, athletesLoaded]);
 
   const effectiveParams: ATPParams | null = useMemo(() => {
     if (!plan) return null;

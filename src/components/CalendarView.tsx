@@ -10,6 +10,7 @@ import { useAthletePhysiology, extractHRZones, extractPowerZones, extractRunPace
 import { useHubPlan } from '../hooks/useHubPlan';
 import { useHubSchedule } from '../hooks/useHubSchedule';
 import { useWeeklyAtpSummary } from '../hooks/useWeeklyAtpSummary';
+import { useCoachAthletes } from '../hooks/useCoachAthletes';
 
 interface PendingBuilder {
   date: Date;
@@ -26,7 +27,6 @@ export default function CalendarView() {
   const [loading, setLoading] = useState(true);
   const [pendingBuilder, setPendingBuilder] = useState<PendingBuilder | null>(null);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
-  const [athletes, setAthletes] = useState<Profile[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Profile | null>(null);
   const [showAthleteDropdown, setShowAthleteDropdown] = useState(false);
   const [syncBanner, setSyncBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -37,6 +37,9 @@ export default function CalendarView() {
   const { loading: pullLoading, fetchSchedule } = useHubSchedule();
 
   const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
+  const coachHubId = isCoach ? user?.id : undefined;
+  const assignedAthletes = isCoach ? (user as any)?.assigned_athletes as string[] | undefined : undefined;
+  const { athletes, loading: athletesLoading } = useCoachAthletes(coachHubId, assignedAthletes);
   const activeAthleteId = isCoach ? selectedAthlete?.id : profile?.id;
   const activeAthleteProfile = isCoach ? selectedAthlete : profile;
   const { physiology } = useAthletePhysiology(activeAthleteId || null);
@@ -89,9 +92,15 @@ export default function CalendarView() {
   };
 
   useEffect(() => {
-    if (isCoach) {
-      loadAthletes();
-    } else if (profile) {
+    if (isCoach && athletes.length > 0 && !selectedAthlete) {
+      setSelectedAthlete(athletes[0]);
+    } else if (isCoach && athletes.length === 0 && !athletesLoading) {
+      setLoading(false);
+    }
+  }, [athletes, athletesLoading]);
+
+  useEffect(() => {
+    if (!isCoach && profile) {
       loadSessions(profile.id);
       loadFtp(profile.id);
     }
@@ -103,30 +112,6 @@ export default function CalendarView() {
       loadFtp(selectedAthlete.id);
     }
   }, [selectedAthlete]);
-
-  async function loadAthletes() {
-    try {
-      const assignedAthletes = profile?.role === 'coach' || profile?.role === 'admin'
-        ? (user as any)?.assigned_athletes as string[] | undefined
-        : undefined;
-
-      let query = supabase.from('profiles').select('*').eq('role', 'athlete').order('full_name');
-      if (assignedAthletes && assignedAthletes.length > 0) {
-        query = query.in('hub_user_id', assignedAthletes);
-      }
-
-      const { data } = await query;
-      setAthletes(data || []);
-      if (data && data.length > 0) {
-        setSelectedAthlete(data[0]);
-      } else {
-        setLoading(false);
-      }
-    } catch (err) {
-      console.error('Error loading athletes:', err);
-      setLoading(false);
-    }
-  }
 
   async function loadSessions(athleteId: string) {
     try {

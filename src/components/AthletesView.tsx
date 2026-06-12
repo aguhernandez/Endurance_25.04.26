@@ -9,6 +9,7 @@ import AthletePhysiologyPanel from './athletes/AthletePhysiologyPanel';
 import AthleteATPPanel from './athletes/AthleteATPPanel';
 import { useHubPassport, PassportSnapshot } from '../hooks/useHubPassport';
 import ApplyProgramModal from './programs/ApplyProgramModal';
+import { useCoachAthletes } from '../hooks/useCoachAthletes';
 
 type Tab = 'physiology' | 'atp';
 
@@ -115,13 +116,15 @@ function PassportCard({ snapshot }: { snapshot: PassportSnapshot }) {
 
 export default function AthletesView() {
   const { profile, user } = useAuth();
-  const [athletes, setAthletes] = useState<Profile[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<Profile | null>(null);
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [athleteFTP, setAthleteFTP] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('physiology');
   const [showProgramModal, setShowProgramModal] = useState(false);
+
+  const coachHubId = user?.id;
+  const assignedAthletes = (user as any)?.assigned_athletes as string[] | undefined;
+  const { athletes, loading, refresh: refreshAthletes } = useCoachAthletes(coachHubId, assignedAthletes);
 
   const { physiology, refetch: refetchPhysiology } = useAthletePhysiology(selectedAthlete?.id);
   const { snapshot: passportSnapshot, loading: passportLoading, error: passportError, fetchPassport } = useHubPassport();
@@ -133,7 +136,11 @@ export default function AthletesView() {
     fetchPassport(hubId, selectedAthlete.id, selectedAthlete.email).then(() => refetchPhysiology?.());
   };
 
-  useEffect(() => { loadAthletes(); }, []);
+  useEffect(() => {
+    if (athletes.length > 0 && !selectedAthlete) {
+      setSelectedAthlete(athletes[0]);
+    }
+  }, [athletes]);
 
   useEffect(() => {
     if (selectedAthlete) {
@@ -141,28 +148,6 @@ export default function AthletesView() {
       loadAthleteFTP(selectedAthlete.id);
     }
   }, [selectedAthlete]);
-
-  async function loadAthletes() {
-    try {
-      const assignedAthletes = profile?.role === 'coach' || profile?.role === 'admin'
-        ? (user as any)?.assigned_athletes as string[] | undefined
-        : undefined;
-
-      let query = supabase.from('profiles').select('*').eq('role', 'athlete').order('full_name');
-      if (assignedAthletes && assignedAthletes.length > 0) {
-        query = query.in('hub_user_id', assignedAthletes);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setAthletes(data || []);
-      if (data && data.length > 0) setSelectedAthlete(data[0]);
-    } catch (error) {
-      console.error('Error loading athletes:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function loadAthleteSessions(athleteId: string) {
     const { data } = await supabase.from('training_sessions').select('*').eq('athlete_id', athleteId).order('session_date', { ascending: false }).limit(20);

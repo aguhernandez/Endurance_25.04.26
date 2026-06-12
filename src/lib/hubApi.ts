@@ -291,7 +291,31 @@ export interface HubTrainingLogPayload {
   notes: string | null;
 }
 
+// ─── Types: Coach Athletes ────────────────────────────────────────────────────
+
+export interface HubCoachAthlete {
+  id: string;
+  email: string;
+  full_name: string;
+  sport?: string;
+  role: 'athlete';
+}
+
 // ─── API Functions ─────────────────────────────────────────────────────────────
+
+export async function hubGetCoachAthletes(coachHubId: string): Promise<HubCoachAthlete[]> {
+  const headers = await plannerHeaders();
+  const res = await fetch(
+    `${BASE_URL}/planner-hub-api/coach-athletes?coach_id=${encodeURIComponent(coachHubId)}`,
+    { headers }
+  );
+  if (!res.ok) {
+    console.warn('[HubApi] coach-athletes failed', res.status);
+    return [];
+  }
+  const json = await res.json();
+  return json.athletes || json.data || [];
+}
 
 export async function hubGetAthleteProfile(athleteId: string, fallbackEmail?: string): Promise<HubAthleteProfile> {
   const headers = await plannerHeaders();
