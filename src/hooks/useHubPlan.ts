@@ -75,8 +75,15 @@ function formatStepDuration(step: WorkoutStep): string {
   return `${step.duration_value}m`;
 }
 
-function formatStepTarget(step: WorkoutStep): string {
+function formatStepTarget(step: WorkoutStep, hrZones?: HrZoneRange[]): string {
   if (step.target_zone != null) {
+    const zone = hrZones?.find(z => z.zone === step.target_zone);
+    if (zone && zone.min != null && zone.max != null) {
+      return `Z${step.target_zone} (${zone.min}-${zone.max} bpm)`;
+    }
+    if (zone && zone.min != null) {
+      return `Z${step.target_zone} (>${zone.min} bpm)`;
+    }
     return `Z${step.target_zone}`;
   }
   if (step.target_percent_ftp != null) {
@@ -95,7 +102,13 @@ function difficultyColorLabel(color: string | null | undefined): string {
   return '';
 }
 
-function buildStepsDescription(workout: Workout, steps: WorkoutStep[], computedImpulse: number | null): string {
+interface HrZoneRange {
+  zone: number;
+  min: number | undefined;
+  max: number | undefined;
+}
+
+function buildStepsDescription(workout: Workout, steps: WorkoutStep[], computedImpulse: number | null, hrZones?: HrZoneRange[]): string {
   const parts: string[] = [];
 
   const diffLabel = difficultyColorLabel(workout.difficulty_color);
@@ -128,12 +141,12 @@ function buildStepsDescription(workout: Workout, steps: WorkoutStep[], computedI
         for (let r = 0; r < repeatCount; r++) {
           for (const s of groupSteps) {
             const cadencePart = s.cadence_rpm ? ` · ${s.cadence_rpm} rpm` : '';
-            stepLines.push(`${s.step_type}: ${formatStepDuration(s)} @ ${formatStepTarget(s)}${cadencePart}`);
+            stepLines.push(`${s.step_type}: ${formatStepDuration(s)} @ ${formatStepTarget(s, hrZones)}${cadencePart}`);
           }
         }
       } else {
         const cadencePart = step.cadence_rpm ? ` · ${step.cadence_rpm} rpm` : '';
-        stepLines.push(`${step.step_type}: ${formatStepDuration(step)} @ ${formatStepTarget(step)}${cadencePart}`);
+        stepLines.push(`${step.step_type}: ${formatStepDuration(step)} @ ${formatStepTarget(step, hrZones)}${cadencePart}`);
       }
     }
 
@@ -158,17 +171,19 @@ interface AthletePhysiologyCache {
   runThresholdPacePerKm: number | null;
   swimThresholdPacePerKm: number | null;
   zoneSystem: '5' | '7';
+  hrZones: HrZoneRange[];
 }
 
 async function loadAthletePhysiology(athleteId: string): Promise<AthletePhysiologyCache> {
+  const empty: AthletePhysiologyCache = { ftp: null, runThresholdPacePerKm: null, swimThresholdPacePerKm: null, zoneSystem: '5', hrZones: [] };
   try {
     const { data } = await supabase
       .from('athlete_physiology')
-      .select('run_pace_z4_min, run_pace_z4_max, swim_css_per_100m, swim_pace_z4_min, swim_pace_z4_max, zone_system')
+      .select('run_pace_z4_min, run_pace_z4_max, swim_css_per_100m, swim_pace_z4_min, swim_pace_z4_max, zone_system, zones5_hr_json, zones7_hr_json, hr_z1_min, hr_z1_max, hr_z2_min, hr_z2_max, hr_z3_min, hr_z3_max, hr_z4_min, hr_z4_max, hr_z5_min, hr_z5_max, hr_z6_min, hr_z6_max, hr_z7_min, hr_z7_max')
       .eq('athlete_id', athleteId)
       .maybeSingle();
 
-    if (!data) return { ftp: null, runThresholdPacePerKm: null, swimThresholdPacePerKm: null, zoneSystem: '5' };
+    if (!data) return empty;
 
     let runThreshold: number | null = null;
     if (data.run_pace_z4_min && data.run_pace_z4_max) {
@@ -184,14 +199,27 @@ async function loadAthletePhysiology(athleteId: string): Promise<AthletePhysiolo
       swimThreshold = (data.swim_pace_z4_min + data.swim_pace_z4_max) / 2;
     }
 
-    return {
-      ftp: null,
-      runThresholdPacePerKm: runThreshold,
-      swimThresholdPacePerKm: swimThreshold,
-      zoneSystem: (data.zone_system as '5' | '7') ?? '5',
-    };
+    const zoneSystem: '5' | '7' = (data.zone_system as '5' | '7') ?? '5';
+
+    // Build HR zones from JSON first, fall back to individual columns
+    let hrZones: HrZoneRange[] = [];
+    const jsonField = zoneSystem === '7' ? data.zones7_hr_json : data.zones5_hr_json;
+    if (Array.isArray(jsonField) && jsonField.length > 0) {
+      hrZones = jsonField.map((z: any) => ({ zone: z.zone, min: z.min_bpm, max: z.max_bpm }));
+    } else {
+      const maxZ = zoneSystem === '7' ? 7 : 5;
+      for (let i = 1; i <= maxZ; i++) {
+        const min = (data as any)[`hr_z${i}_min`] ?? undefined;
+        const max = (data as any)[`hr_z${i}_max`] ?? undefined;
+        if (min != null || max != null) {
+          hrZones.push({ zone: i, min, max });
+        }
+      }
+    }
+
+    return { ftp: null, runThresholdPacePerKm: runThreshold, swimThresholdPacePerKm: swimThreshold, zoneSystem, hrZones };
   } catch {
-    return { ftp: null, runThresholdPacePerKm: null, swimThresholdPacePerKm: null, zoneSystem: '5' };
+    return empty;
   }
 }
 
@@ -411,7 +439,8 @@ export function useHubPlan(): UseHubPlanResult {
           const description = buildStepsDescription(
             { ...w, difficulty_color: effectiveDifficultyColor },
             steps,
-            computedPlannedImpulse
+            computedPlannedImpulse,
+            physiology.hrZones
           );
 
           const diffNotes = difficultyColorLabel(effectiveDifficultyColor);
