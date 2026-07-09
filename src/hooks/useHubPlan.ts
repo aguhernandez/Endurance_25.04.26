@@ -106,6 +106,7 @@ function buildStepsDescription(workout: Workout, steps: WorkoutStep[], computedI
   if (steps.length > 0) {
     const stepLines: string[] = [];
 
+    // Group paired steps by repeat_group_id
     const grouped = new Map<string, WorkoutStep[]>();
     for (const step of steps) {
       const key = step.repeat_group_id || step.id;
@@ -122,12 +123,14 @@ function buildStepsDescription(workout: Workout, steps: WorkoutStep[], computedI
       const groupSteps = grouped.get(groupKey)!;
 
       if (step.repeat_group_id && step.repeat_times && step.repeat_times > 1) {
-        const innerLines = groupSteps.map(s => {
-          const cadencePart = s.cadence_rpm ? ` · ${s.cadence_rpm} rpm` : '';
-          return `  ${s.step_type}: ${formatStepDuration(s)} @ ${formatStepTarget(s)}${cadencePart}`;
-        });
-        stepLines.push(`${step.repeat_times}x:`);
-        stepLines.push(...innerLines);
+        // Expand the pair N times as flat alternating interval+recovery lines
+        const repeatCount = step.repeat_times;
+        for (let r = 0; r < repeatCount; r++) {
+          for (const s of groupSteps) {
+            const cadencePart = s.cadence_rpm ? ` · ${s.cadence_rpm} rpm` : '';
+            stepLines.push(`${s.step_type}: ${formatStepDuration(s)} @ ${formatStepTarget(s)}${cadencePart}`);
+          }
+        }
       } else {
         const cadencePart = step.cadence_rpm ? ` · ${step.cadence_rpm} rpm` : '';
         stepLines.push(`${step.step_type}: ${formatStepDuration(step)} @ ${formatStepTarget(step)}${cadencePart}`);
