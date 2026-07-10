@@ -182,6 +182,40 @@ export interface HubBiologicalPassport {
   }>;
 }
 
+export interface HubGpsPoint {
+  lat: number;
+  lng: number;
+  altitude_m?: number | null;
+  timestamp?: string | null;
+  speed_kmh?: number | null;
+  heart_rate?: number | null;
+  power_watts?: number | null;
+  cadence?: number | null;
+  distance_m?: number | null;
+}
+
+export interface HubZoneDistribution {
+  zone: number;
+  name: string;
+  color: string;
+  planned_percent: number | null;
+  actual_percent: number | null;
+  actual_seconds: number | null;
+  within_target: boolean | null;
+}
+
+export interface HubActivityLog {
+  timestamp: string;
+  type: 'lap' | 'segment' | 'note' | 'event';
+  label: string;
+  value?: string | null;
+  duration_s?: number | null;
+  avg_hr?: number | null;
+  avg_power?: number | null;
+  avg_speed?: number | null;
+  compliance?: number | null;
+}
+
 export interface HubScheduledWorkout {
   id: string;
   scheduled_date: string;
@@ -198,16 +232,39 @@ export interface HubScheduledWorkout {
   actual_duration_minutes?: number | null;
   actual_distance_km?: number | null;
   actual_avg_hr?: number | null;
+  actual_max_hr?: number | null;
   actual_avg_power_watts?: number | null;
+  actual_max_power_watts?: number | null;
+  actual_avg_cadence?: number | null;
+  actual_avg_speed_kmh?: number | null;
+  actual_elevation_gain_m?: number | null;
+  actual_calories?: number | null;
   actual_tss?: number | null;
   actual_impulse?: number | null;
   rpe?: number | null;
   compliance_percent?: number | null;
   athlete_notes?: string | null;
   athlete_feedback?: string | null;
-  athlete_feeling?: string | null; // e.g. 'great', 'good', 'average', 'bad', 'terrible'
+  athlete_feeling?: string | null;
   coach_notes?: string | null;
   training_log_id?: string | null;
+  // New rich fields
+  gps_track?: HubGpsPoint[] | null;
+  zone_distribution?: HubZoneDistribution[] | null;
+  activity_log?: HubActivityLog[] | null;
+  lap_count?: number | null;
+  // Flat fields the Hub may also use
+  name?: string;
+  sport?: string;
+  planned_duration_minutes?: number | null;
+  planned_impulse?: number | null;
+  session_type?: string | null;
+  target_zones?: unknown[];
+  intensity_basis?: string | null;
+  planner_source?: string | null;
+  workout_source?: string;
+  intensity_color?: string | null;
+  intensity_label?: string | null;
 }
 
 export interface HubCompletedLog {
@@ -221,7 +278,6 @@ export interface HubCompletedLog {
   rpe: number | null;
   workout_type: string | null;
   notes: string | null;
-  // Extended fields returned by detail endpoint
   max_heart_rate?: number | null;
   max_power_watts?: number | null;
   session_impulse?: number | null;
@@ -234,12 +290,14 @@ export interface HubCompletedLog {
   external_activity_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  // Athlete feedback / sensations
   athlete_notes?: string | null;
   athlete_feedback?: string | null;
   athlete_feeling?: string | null;
   compliance_percent?: number | null;
   workout_name?: string | null;
+  gps_track?: HubGpsPoint[] | null;
+  zone_distribution?: HubZoneDistribution[] | null;
+  activity_log?: HubActivityLog[] | null;
 }
 
 export interface HubWeeklyLoad {
