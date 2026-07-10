@@ -206,6 +206,19 @@ export interface HubCompletedLog {
   rpe: number | null;
   workout_type: string | null;
   notes: string | null;
+  // Extended fields returned by detail endpoint
+  max_heart_rate?: number | null;
+  max_power_watts?: number | null;
+  session_impulse?: number | null;
+  relative_intensity?: number | null;
+  elevation_gain_m?: number | null;
+  avg_cadence?: number | null;
+  avg_speed_kmh?: number | null;
+  calories?: number | null;
+  external_source?: string | null;
+  external_activity_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface HubWeeklyLoad {
@@ -433,6 +446,31 @@ export interface HubPushTagsResult {
   saved: string[];
   errors: string[];
   message: string;
+}
+
+export async function hubGetTrainingLog(
+  athleteId: string,
+  trainingLogId: string
+): Promise<HubCompletedLog> {
+  const res = await fetch(
+    `${BASE_URL}/planner-hub-api/training-log?athlete_id=${encodeURIComponent(athleteId)}&log_id=${encodeURIComponent(trainingLogId)}`,
+    { headers: await plannerHeaders() }
+  );
+  return handleResponse<HubCompletedLog>(res);
+}
+
+export async function hubGetTrainingLogs(
+  athleteId: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<HubCompletedLog[]> {
+  const params = new URLSearchParams({ athlete_id: athleteId, date_from: dateFrom, date_to: dateTo });
+  const res = await fetch(
+    `${BASE_URL}/planner-hub-api/training-logs?${params}`,
+    { headers: await plannerHeaders() }
+  );
+  const json = await handleResponse<{ logs?: HubCompletedLog[]; data?: HubCompletedLog[] }>(res);
+  return json.logs || json.data || [];
 }
 
 export async function hubPushTags(

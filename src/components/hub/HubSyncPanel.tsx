@@ -14,11 +14,18 @@ import {
   Calendar,
   User,
   Tag,
+  Clock,
+  MapPin,
+  Flame,
+  BarChart2,
+  Wind,
+  ArrowLeft,
 } from 'lucide-react';
 import { useHubPassport, PassportSnapshot } from '../../hooks/useHubPassport';
 import { useHubPlan, PushPlanResult } from '../../hooks/useHubPlan';
 import { useHubSchedule } from '../../hooks/useHubSchedule';
-import { HubTrainingSchedule, HubPushTagsResult, collectAndPushAthleteTags } from '../../lib/hubApi';
+import { useHubTrainingLog } from '../../hooks/useHubTrainingLog';
+import { HubTrainingSchedule, HubPushTagsResult, HubCompletedLog, collectAndPushAthleteTags } from '../../lib/hubApi';
 
 interface HubSyncPanelProps {
   hubAthleteId: string;
@@ -276,13 +283,189 @@ function TagsPushBanner({ result }: { result: HubPushTagsResult }) {
   );
 }
 
+function MetricBox({ icon: Icon, label, value, color, bg }: {
+  icon: React.ElementType; label: string; value: string; color: string; bg: string;
+}) {
+  return (
+    <div className={`flex items-center gap-3 p-3 rounded-lg ${bg}`}>
+      <Icon className={`w-4 h-4 flex-shrink-0 ${color}`} />
+      <div>
+        <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</p>
+        <p className={`text-sm font-bold ${color}`}>{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function TrainingLogDetail({ log, onBack }: { log: HubCompletedLog; onBack: () => void }) {
+  const sportColor: Record<string, string> = {
+    cycling: 'text-amber-600 bg-amber-50 dark:bg-amber-900/20',
+    running: 'text-green-600 bg-green-50 dark:bg-green-900/20',
+    swimming: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20',
+    triathlon: 'text-purple-600 bg-purple-50 dark:bg-purple-900/20',
+  };
+  const colorClass = sportColor[log.workout_type || ''] || 'text-gray-600 bg-gray-50 dark:bg-gray-700/50';
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+      <div className="px-5 py-4 bg-violet-50 dark:bg-violet-900/20 flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="p-1.5 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-800/40 transition"
+        >
+          <ArrowLeft className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-violet-900 dark:text-violet-200 truncate">
+            Training Session — {log.training_date}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5">
+            {log.workout_type && (
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${colorClass}`}>
+                {log.workout_type}
+              </span>
+            )}
+            <span className="text-xs text-violet-600 dark:text-violet-400">ID: {log.id}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 py-4 bg-white dark:bg-gray-800">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {log.duration_minutes != null && (
+            <MetricBox icon={Clock} label="Duration" value={`${log.duration_minutes} min`} color="text-blue-600" bg="bg-blue-50 dark:bg-blue-900/20" />
+          )}
+          {log.distance_km != null && (
+            <MetricBox icon={MapPin} label="Distance" value={`${log.distance_km} km`} color="text-emerald-600" bg="bg-emerald-50 dark:bg-emerald-900/20" />
+          )}
+          {log.avg_heart_rate != null && (
+            <MetricBox icon={Heart} label="Avg HR" value={`${log.avg_heart_rate} bpm`} color="text-red-600" bg="bg-red-50 dark:bg-red-900/20" />
+          )}
+          {log.max_heart_rate != null && (
+            <MetricBox icon={Heart} label="Max HR" value={`${log.max_heart_rate} bpm`} color="text-rose-600" bg="bg-rose-50 dark:bg-rose-900/20" />
+          )}
+          {log.avg_power_watts != null && (
+            <MetricBox icon={Zap} label="Avg Power" value={`${log.avg_power_watts} W`} color="text-amber-600" bg="bg-amber-50 dark:bg-amber-900/20" />
+          )}
+          {log.max_power_watts != null && (
+            <MetricBox icon={Zap} label="Max Power" value={`${log.max_power_watts} W`} color="text-yellow-600" bg="bg-yellow-50 dark:bg-yellow-900/20" />
+          )}
+          {log.avg_speed_kmh != null && (
+            <MetricBox icon={Wind} label="Avg Speed" value={`${log.avg_speed_kmh} km/h`} color="text-cyan-600" bg="bg-cyan-50 dark:bg-cyan-900/20" />
+          )}
+          {log.avg_cadence != null && (
+            <MetricBox icon={Activity} label="Avg Cadence" value={`${log.avg_cadence} rpm`} color="text-indigo-600" bg="bg-indigo-50 dark:bg-indigo-900/20" />
+          )}
+          {log.elevation_gain_m != null && (
+            <MetricBox icon={TrendingUp} label="Elevation" value={`${log.elevation_gain_m} m`} color="text-teal-600" bg="bg-teal-50 dark:bg-teal-900/20" />
+          )}
+          {log.calories != null && (
+            <MetricBox icon={Flame} label="Calories" value={`${log.calories} kcal`} color="text-orange-600" bg="bg-orange-50 dark:bg-orange-900/20" />
+          )}
+          {(log.session_impulse != null || log.tss != null) && (
+            <MetricBox icon={BarChart2} label="Impulse / TSS" value={`${log.session_impulse ?? log.tss}`} color="text-violet-600" bg="bg-violet-50 dark:bg-violet-900/20" />
+          )}
+          {log.rpe != null && (
+            <MetricBox icon={Activity} label="RPE" value={`${log.rpe} / 10`} color="text-pink-600" bg="bg-pink-50 dark:bg-pink-900/20" />
+          )}
+          {log.relative_intensity != null && (
+            <MetricBox icon={BarChart2} label="Rel. Intensity" value={`${(log.relative_intensity * 100).toFixed(1)}%`} color="text-gray-600" bg="bg-gray-50 dark:bg-gray-700/50" />
+          )}
+        </div>
+
+        {log.notes && (
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Notes</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">{log.notes}</p>
+          </div>
+        )}
+
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Metadata</p>
+          <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+            {log.external_source && (
+              <span>Source: <span className="font-medium text-gray-700 dark:text-gray-300">{log.external_source}</span></span>
+            )}
+            {log.external_activity_id && (
+              <span>Activity ID: <span className="font-medium text-gray-700 dark:text-gray-300 truncate">{log.external_activity_id}</span></span>
+            )}
+            {log.created_at && (
+              <span>Logged: <span className="font-medium text-gray-700 dark:text-gray-300">{new Date(log.created_at).toLocaleDateString()}</span></span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrainingLogList({ logs, onSelect }: { logs: HubCompletedLog[]; onSelect: (log: HubCompletedLog) => void }) {
+  const [expanded, setExpanded] = useState(true);
+
+  if (logs.length === 0) return null;
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-5 py-4 bg-violet-50 dark:bg-violet-900/20 text-left hover:bg-violet-100 dark:hover:bg-violet-900/30 transition"
+      >
+        <div className="flex items-center gap-3">
+          <Download className="w-5 h-5 text-violet-600 dark:text-violet-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-violet-900 dark:text-violet-200">Training Logs from Hub</p>
+            <p className="text-xs text-violet-600 dark:text-violet-500">{logs.length} session{logs.length !== 1 ? 's' : ''} retrieved</p>
+          </div>
+        </div>
+        {expanded ? <ChevronUp size={16} className="text-violet-600" /> : <ChevronDown size={16} className="text-violet-600" />}
+      </button>
+
+      {expanded && (
+        <div className="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700">
+          {logs.map(log => (
+            <button
+              key={log.id}
+              onClick={() => onSelect(log)}
+              className="w-full flex items-center gap-4 px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition text-left"
+            >
+              <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                <Activity className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {log.training_date}
+                  {log.workout_type && (
+                    <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 capitalize">{log.workout_type}</span>
+                  )}
+                </p>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {log.duration_minutes != null && <span>{log.duration_minutes} min</span>}
+                  {log.distance_km != null && <span>{log.distance_km} km</span>}
+                  {log.avg_heart_rate != null && <span>{log.avg_heart_rate} bpm</span>}
+                  {(log.session_impulse != null || log.tss != null) && (
+                    <span>Impulse {log.session_impulse ?? log.tss}</span>
+                  )}
+                </div>
+              </div>
+              <ChevronDown size={14} className="text-gray-400 -rotate-90 flex-shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HubSyncPanel({ hubAthleteId, localAthleteId, ftpWatts, athleteName, athleteEmail }: HubSyncPanelProps) {
   const { snapshot, loading: passportLoading, error: passportError, fetchPassport } = useHubPassport();
   const { pushing, lastResult, pushWeeklyPlan } = useHubPlan();
   const { schedule, loading: scheduleLoading, error: scheduleError, fetchSchedule } = useHubSchedule();
+  const { logs, selectedLog, loading: logsLoading, error: logsError, fetchByDateRange, fetchById, selectLog, clear: clearLogs } = useHubTrainingLog();
   const [pushingTags, setPushingTags] = useState(false);
   const [tagsResult, setTagsResult] = useState<HubPushTagsResult | null>(null);
   const [tagsError, setTagsError] = useState<string | null>(null);
+  const [showLogIdInput, setShowLogIdInput] = useState(false);
+  const [logIdInput, setLogIdInput] = useState('');
 
   const handleFetchPassport = () => {
     fetchPassport(hubAthleteId, localAthleteId, athleteEmail);
@@ -303,6 +486,26 @@ export default function HubSyncPanel({ hubAthleteId, localAthleteId, ftpWatts, a
       dateFrom.toISOString().split('T')[0],
       dateTo.toISOString().split('T')[0]
     );
+  };
+
+  const handlePullTrainingLogs = () => {
+    clearLogs();
+    const today = new Date();
+    const dateFrom = new Date(today);
+    dateFrom.setDate(today.getDate() - 60);
+    fetchByDateRange(
+      hubAthleteId,
+      dateFrom.toISOString().split('T')[0],
+      today.toISOString().split('T')[0]
+    );
+  };
+
+  const handleFetchById = () => {
+    if (!logIdInput.trim()) return;
+    clearLogs();
+    fetchById(hubAthleteId, logIdInput.trim());
+    setShowLogIdInput(false);
+    setLogIdInput('');
   };
 
   const handlePushTags = async () => {
@@ -370,42 +573,79 @@ export default function HubSyncPanel({ hubAthleteId, localAthleteId, ftpWatts, a
           color="teal"
           onClick={handlePushTags}
         />
+        <SyncButton
+          icon={Download}
+          label="Pull Training Logs"
+          description="Retrieve completed sessions (60 days)"
+          loading={logsLoading}
+          color="violet"
+          onClick={handlePullTrainingLogs}
+        />
+        <button
+          onClick={() => setShowLogIdInput(v => !v)}
+          className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-violet-200 dark:border-violet-700 hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 text-violet-700 dark:text-violet-400 transition text-left"
+        >
+          <Activity className="w-5 h-5 text-violet-500" />
+          <div>
+            <p className="text-sm font-semibold">Pull by Session ID</p>
+            <p className="text-xs opacity-70 mt-0.5">Fetch one specific log from Hub</p>
+          </div>
+        </button>
       </div>
 
-      {passportError && (
-        <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-red-800 dark:text-red-300">Passport Error</p>
-            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{passportError}</p>
-          </div>
+      {showLogIdInput && (
+        <div className="flex gap-2 items-center">
+          <input
+            type="text"
+            value={logIdInput}
+            onChange={e => setLogIdInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleFetchById()}
+            placeholder="Paste training log ID..."
+            className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+          <button
+            onClick={handleFetchById}
+            disabled={!logIdInput.trim()}
+            className="px-4 py-2 text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-lg disabled:opacity-40 transition"
+          >
+            Fetch
+          </button>
+          <button
+            onClick={() => { setShowLogIdInput(false); setLogIdInput(''); }}
+            className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
+          >
+            Cancel
+          </button>
         </div>
       )}
 
-      {scheduleError && (
-        <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-red-800 dark:text-red-300">Schedule Error</p>
-            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{scheduleError}</p>
-          </div>
-        </div>
-      )}
-
-      {tagsError && (
-        <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-red-800 dark:text-red-300">Tags Error</p>
-            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{tagsError}</p>
-          </div>
-        </div>
-      )}
+      {passportError && <ErrorBanner title="Passport Error" message={passportError} />}
+      {scheduleError && <ErrorBanner title="Schedule Error" message={scheduleError} />}
+      {tagsError && <ErrorBanner title="Tags Error" message={tagsError} />}
+      {logsError && <ErrorBanner title="Training Logs Error" message={logsError} />}
 
       {snapshot && <PassportCard snapshot={snapshot} />}
       {schedule && <SchedulePreview schedule={schedule} />}
       {lastResult && <PushResultBanner result={lastResult} />}
       {tagsResult && <TagsPushBanner result={tagsResult} />}
+
+      {selectedLog ? (
+        <TrainingLogDetail log={selectedLog} onBack={() => selectLog(null)} />
+      ) : logs.length > 0 ? (
+        <TrainingLogList logs={logs} onSelect={selectLog} />
+      ) : null}
+    </div>
+  );
+}
+
+function ErrorBanner({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl">
+      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+      <div>
+        <p className="text-sm font-semibold text-red-800 dark:text-red-300">{title}</p>
+        <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{message}</p>
+      </div>
     </div>
   );
 }
@@ -415,7 +655,7 @@ function SyncButton({ icon: Icon, label, description, loading, color, onClick }:
   label: string;
   description: string;
   loading: boolean;
-  color: 'emerald' | 'blue' | 'amber' | 'teal';
+  color: 'emerald' | 'blue' | 'amber' | 'teal' | 'violet';
   onClick: () => void;
 }) {
   const colors = {
@@ -423,6 +663,7 @@ function SyncButton({ icon: Icon, label, description, loading, color, onClick }:
     blue: 'border-blue-200 dark:border-blue-700 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-400',
     amber: 'border-amber-200 dark:border-amber-700 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400',
     teal: 'border-teal-200 dark:border-teal-700 hover:border-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-400',
+    violet: 'border-violet-200 dark:border-violet-700 hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 text-violet-700 dark:text-violet-400',
   };
 
   const iconColors = {
@@ -430,6 +671,7 @@ function SyncButton({ icon: Icon, label, description, loading, color, onClick }:
     blue: 'text-blue-500',
     amber: 'text-amber-500',
     teal: 'text-teal-500',
+    violet: 'text-violet-500',
   };
 
   return (
