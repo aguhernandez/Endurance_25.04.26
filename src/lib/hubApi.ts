@@ -193,6 +193,21 @@ export interface HubScheduledWorkout {
     duration_minutes: number | null;
     description: string | null;
   };
+  // Completion data (populated when status === 'completed')
+  completed_at?: string | null;
+  actual_duration_minutes?: number | null;
+  actual_distance_km?: number | null;
+  actual_avg_hr?: number | null;
+  actual_avg_power_watts?: number | null;
+  actual_tss?: number | null;
+  actual_impulse?: number | null;
+  rpe?: number | null;
+  compliance_percent?: number | null;
+  athlete_notes?: string | null;
+  athlete_feedback?: string | null;
+  athlete_feeling?: string | null; // e.g. 'great', 'good', 'average', 'bad', 'terrible'
+  coach_notes?: string | null;
+  training_log_id?: string | null;
 }
 
 export interface HubCompletedLog {
@@ -219,6 +234,12 @@ export interface HubCompletedLog {
   external_activity_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // Athlete feedback / sensations
+  athlete_notes?: string | null;
+  athlete_feedback?: string | null;
+  athlete_feeling?: string | null;
+  compliance_percent?: number | null;
+  workout_name?: string | null;
 }
 
 export interface HubWeeklyLoad {

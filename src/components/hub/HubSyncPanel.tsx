@@ -171,9 +171,180 @@ function PushResultBanner({ result }: { result: PushPlanResult }) {
   );
 }
 
+function feelingLabel(feeling: string | null | undefined): { text: string; color: string } {
+  switch (feeling) {
+    case 'great': return { text: 'Great', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' };
+    case 'good': return { text: 'Good', color: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' };
+    case 'average': return { text: 'Average', color: 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' };
+    case 'bad': return { text: 'Bad', color: 'text-orange-600 bg-orange-50 dark:bg-orange-900/20' };
+    case 'terrible': return { text: 'Terrible', color: 'text-red-600 bg-red-50 dark:bg-red-900/20' };
+    default: return { text: feeling || 'Unknown', color: 'text-gray-600 bg-gray-50 dark:bg-gray-700/50' };
+  }
+}
+
+function WorkoutCompletionDetail({ sw, log, onBack }: {
+  sw: HubScheduledWorkout;
+  log: HubCompletedLog | null;
+  onBack: () => void;
+}) {
+  const planned = sw.workout.duration_minutes;
+  const actual = sw.actual_duration_minutes ?? log?.duration_minutes ?? null;
+  const compliance = sw.compliance_percent ?? (planned && actual ? Math.round((actual / planned) * 100) : null);
+  const feeling = sw.athlete_feeling ?? log?.athlete_feeling ?? null;
+  const athleteNotes = sw.athlete_notes ?? log?.athlete_notes ?? sw.athlete_feedback ?? log?.athlete_feedback ?? log?.notes ?? null;
+  const coachNotes = sw.coach_notes ?? null;
+  const rpe = sw.rpe ?? log?.rpe ?? null;
+  const avgHr = sw.actual_avg_hr ?? log?.avg_heart_rate ?? null;
+  const avgPower = sw.actual_avg_power_watts ?? log?.avg_power_watts ?? null;
+  const impulse = sw.actual_impulse ?? log?.session_impulse ?? log?.tss ?? null;
+  const distanceKm = sw.actual_distance_km ?? log?.distance_km ?? null;
+  const f = feeling ? feelingLabel(feeling) : null;
+
+  return (
+    <div className="border border-emerald-200 dark:border-emerald-700 rounded-xl overflow-hidden">
+      <div className="px-5 py-4 bg-emerald-50 dark:bg-emerald-900/20 flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="p-1.5 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition"
+        >
+          <ArrowLeft className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200 truncate">{sw.workout.name}</p>
+          </div>
+          <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">{sw.scheduled_date} · Completed</p>
+        </div>
+      </div>
+
+      <div className="px-5 py-4 bg-white dark:bg-gray-800 space-y-4">
+
+        {/* Compliance bar */}
+        {compliance != null && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Workout Compliance</p>
+              <span className={`text-sm font-bold ${compliance >= 90 ? 'text-emerald-600' : compliance >= 70 ? 'text-amber-600' : 'text-red-500'}`}>
+                {compliance}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5">
+              <div
+                className={`h-2.5 rounded-full transition-all ${
+                  compliance >= 90 ? 'bg-emerald-500' : compliance >= 70 ? 'bg-amber-500' : 'bg-red-400'
+                }`}
+                style={{ width: `${Math.min(compliance, 100)}%` }}
+              />
+            </div>
+            {planned && actual && (
+              <div className="flex justify-between text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                <span>Planned: {planned} min</span>
+                <span>Actual: {actual} min</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Metrics grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {actual != null && (
+            <MetricBox icon={Clock} label="Duration" value={`${actual} min`} color="text-blue-600" bg="bg-blue-50 dark:bg-blue-900/20" />
+          )}
+          {distanceKm != null && (
+            <MetricBox icon={MapPin} label="Distance" value={`${distanceKm} km`} color="text-emerald-600" bg="bg-emerald-50 dark:bg-emerald-900/20" />
+          )}
+          {avgHr != null && (
+            <MetricBox icon={Heart} label="Avg HR" value={`${avgHr} bpm`} color="text-red-600" bg="bg-red-50 dark:bg-red-900/20" />
+          )}
+          {avgPower != null && (
+            <MetricBox icon={Zap} label="Avg Power" value={`${avgPower} W`} color="text-amber-600" bg="bg-amber-50 dark:bg-amber-900/20" />
+          )}
+          {rpe != null && (
+            <MetricBox icon={Activity} label="RPE" value={`${rpe} / 10`} color="text-pink-600" bg="bg-pink-50 dark:bg-pink-900/20" />
+          )}
+          {impulse != null && (
+            <MetricBox icon={BarChart2} label="Impulse" value={String(typeof impulse === 'number' ? Math.round(impulse * 100) / 100 : impulse)} color="text-violet-600" bg="bg-violet-50 dark:bg-violet-900/20" />
+          )}
+          {log?.elevation_gain_m != null && (
+            <MetricBox icon={TrendingUp} label="Elevation" value={`${log.elevation_gain_m} m`} color="text-teal-600" bg="bg-teal-50 dark:bg-teal-900/20" />
+          )}
+          {log?.avg_cadence != null && (
+            <MetricBox icon={Activity} label="Cadence" value={`${log.avg_cadence} rpm`} color="text-indigo-600" bg="bg-indigo-50 dark:bg-indigo-900/20" />
+          )}
+          {log?.avg_speed_kmh != null && (
+            <MetricBox icon={Wind} label="Avg Speed" value={`${log.avg_speed_kmh} km/h`} color="text-cyan-600" bg="bg-cyan-50 dark:bg-cyan-900/20" />
+          )}
+          {log?.calories != null && (
+            <MetricBox icon={Flame} label="Calories" value={`${log.calories} kcal`} color="text-orange-600" bg="bg-orange-50 dark:bg-orange-900/20" />
+          )}
+        </div>
+
+        {/* Athlete feeling */}
+        {f && (
+          <div className="flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Feeling</p>
+            <span className={`text-xs font-bold px-3 py-1 rounded-full ${f.color}`}>{f.text}</span>
+          </div>
+        )}
+
+        {/* Athlete notes / feedback */}
+        {athleteNotes && (
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Athlete Feedback</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{athleteNotes}"</p>
+          </div>
+        )}
+
+        {/* Coach notes */}
+        {coachNotes && (
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Coach Notes</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">{coachNotes}</p>
+          </div>
+        )}
+
+        {/* Planned description */}
+        {sw.workout.description && (
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Workout Plan</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-line">{sw.workout.description}</p>
+          </div>
+        )}
+
+        {/* No data notice */}
+        {compliance == null && avgHr == null && avgPower == null && rpe == null && !athleteNotes && !feeling && (
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>No detailed completion data returned by the Hub for this session.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SchedulePreview({ schedule }: { schedule: HubTrainingSchedule }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+  const [selectedWorkout, setSelectedWorkout] = useState<HubScheduledWorkout | null>(null);
   const total = schedule.scheduled_workouts.length + schedule.completed_training_logs.length;
+
+  // Build a map from training_date → completed log for cross-referencing
+  const logByDate = new Map<string, HubCompletedLog>();
+  for (const log of schedule.completed_training_logs) {
+    logByDate.set(log.training_date, log);
+  }
+
+  if (selectedWorkout) {
+    const matchingLog = logByDate.get(selectedWorkout.scheduled_date) ?? null;
+    return (
+      <WorkoutCompletionDetail
+        sw={selectedWorkout}
+        log={matchingLog}
+        onBack={() => setSelectedWorkout(null)}
+      />
+    );
+  }
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
@@ -184,11 +355,11 @@ function SchedulePreview({ schedule }: { schedule: HubTrainingSchedule }) {
         <div className="flex items-center gap-3">
           <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">
-              Hub Calendar Loaded
-            </p>
+            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Hub Calendar Loaded</p>
             <p className="text-xs text-blue-600 dark:text-blue-500">
-              {schedule.scheduled_workouts.length} planned · {schedule.completed_training_logs.length} completed · {schedule.weekly_loads.length} weeks
+              {schedule.scheduled_workouts.filter(w => w.status === 'completed').length} completed ·{' '}
+              {schedule.scheduled_workouts.filter(w => w.status === 'pending').length} pending ·{' '}
+              {schedule.weekly_loads.length} weeks
             </p>
           </div>
         </div>
@@ -196,24 +367,24 @@ function SchedulePreview({ schedule }: { schedule: HubTrainingSchedule }) {
       </button>
 
       {expanded && total > 0 && (
-        <div className="px-5 py-4 bg-white dark:bg-gray-800 space-y-3">
+        <div className="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700">
           {schedule.weekly_loads.length > 0 && (
-            <div>
+            <div className="px-5 py-4">
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Weekly Loads</p>
               <div className="space-y-1.5">
                 {schedule.weekly_loads.slice(0, 4).map(wl => (
                   <div key={wl.week_start_date} className="flex items-center gap-4 text-sm">
                     <span className="text-gray-500 dark:text-gray-400 w-24 flex-shrink-0">{wl.week_start_date}</span>
                     <div className="flex gap-4 text-xs">
-                      {wl.planned_hours && (
+                      {wl.planned_hours != null && (
                         <span className="text-gray-600 dark:text-gray-400">
-                          Plan: <strong>{wl.planned_hours?.toFixed(1)}h</strong>
+                          Plan: <strong>{wl.planned_hours.toFixed(1)}h</strong>
                           {wl.planned_tss ? ` / ${wl.planned_tss} TSS` : ''}
                         </span>
                       )}
-                      {wl.actual_hours && (
+                      {wl.actual_hours != null && (
                         <span className="text-emerald-600 dark:text-emerald-400">
-                          Done: <strong>{wl.actual_hours?.toFixed(1)}h</strong>
+                          Done: <strong>{wl.actual_hours.toFixed(1)}h</strong>
                           {wl.actual_tss ? ` / ${wl.actual_tss} TSS` : ''}
                         </span>
                       )}
@@ -227,23 +398,67 @@ function SchedulePreview({ schedule }: { schedule: HubTrainingSchedule }) {
             </div>
           )}
 
-          {schedule.scheduled_workouts.slice(0, 5).length > 0 && (
-            <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Upcoming Workouts</p>
+          {schedule.scheduled_workouts.length > 0 && (
+            <div className="px-5 py-4">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Sessions</p>
               <div className="space-y-1.5">
-                {schedule.scheduled_workouts.slice(0, 5).map(sw => (
-                  <div key={sw.id} className="flex items-center gap-3 text-sm">
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      sw.status === 'completed' ? 'bg-emerald-500' :
-                      sw.status === 'skipped' ? 'bg-gray-400' : 'bg-blue-400'
-                    }`} />
-                    <span className="text-gray-500 dark:text-gray-400 w-24 flex-shrink-0 text-xs">{sw.scheduled_date}</span>
-                    <span className="text-gray-800 dark:text-gray-200 truncate">{sw.workout.name}</span>
-                    {sw.workout.duration_minutes && (
-                      <span className="text-xs text-gray-500 ml-auto flex-shrink-0">{sw.workout.duration_minutes} min</span>
-                    )}
-                  </div>
-                ))}
+                {[...schedule.scheduled_workouts]
+                  .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))
+                  .map(sw => {
+                    const isCompleted = sw.status === 'completed';
+                    const isSkipped = sw.status === 'skipped';
+                    const log = logByDate.get(sw.scheduled_date);
+                    const hasDetail = isCompleted;
+
+                    return (
+                      <button
+                        key={sw.id}
+                        onClick={() => hasDetail && setSelectedWorkout(sw)}
+                        disabled={!hasDetail}
+                        className={`w-full flex items-center gap-3 text-sm rounded-lg px-2 py-1.5 -mx-2 transition text-left ${
+                          hasDetail
+                            ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'
+                            : 'cursor-default'
+                        }`}
+                      >
+                        {isCompleted ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                        ) : isSkipped ? (
+                          <span className="w-4 h-4 rounded-full bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+                        ) : (
+                          <span className="w-4 h-4 rounded-full bg-blue-300 dark:bg-blue-600 flex-shrink-0" />
+                        )}
+                        <span className="text-gray-500 dark:text-gray-400 w-24 flex-shrink-0 text-xs">{sw.scheduled_date}</span>
+                        <span className={`flex-1 truncate font-medium ${
+                          isCompleted ? 'text-gray-900 dark:text-gray-100' :
+                          isSkipped ? 'line-through text-gray-400 dark:text-gray-500' :
+                          'text-gray-700 dark:text-gray-300'
+                        }`}>
+                          {sw.workout.name}
+                        </span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isCompleted && sw.compliance_percent != null && (
+                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                              sw.compliance_percent >= 90 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' :
+                              sw.compliance_percent >= 70 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' :
+                              'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                            }`}>
+                              {sw.compliance_percent}%
+                            </span>
+                          )}
+                          {isCompleted && log?.rpe != null && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">RPE {log.rpe}</span>
+                          )}
+                          {isCompleted && (
+                            <ChevronDown size={12} className="text-gray-400 -rotate-90" />
+                          )}
+                          {!isCompleted && sw.workout.duration_minutes && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">{sw.workout.duration_minutes} min</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           )}
