@@ -698,6 +698,7 @@ export default function HubSyncPanel({ hubAthleteId, localAthleteId, ftpWatts, a
     dateTo.setDate(today.getDate() + 28);
     fetchSchedule(
       hubAthleteId,
+      localAthleteId,
       dateFrom.toISOString().split('T')[0],
       dateTo.toISOString().split('T')[0]
     );

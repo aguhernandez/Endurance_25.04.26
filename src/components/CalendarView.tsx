@@ -68,23 +68,25 @@ export default function CalendarView() {
   };
 
   const handlePullActivity = async () => {
-    if (!activeHubId) return;
+    if (!activeHubId || !activeAthleteId) return;
     setSyncBanner(null);
     const today = new Date();
     const from = new Date(today); from.setDate(today.getDate() - 14);
     const to = new Date(today); to.setDate(today.getDate() + 28);
     const result = await fetchSchedule(
       activeHubId,
+      activeAthleteId,
       from.toISOString().split('T')[0],
       to.toISOString().split('T')[0]
     );
     if (result) {
-      const done = result.completed_training_logs.length;
+      const done = result.scheduled_workouts.filter(w => w.status === 'completed').length;
       const planned = result.scheduled_workouts.length;
       setSyncBanner({
         type: 'success',
-        message: `Hub: ${planned} entrenamiento${planned !== 1 ? 's' : ''} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''}`,
+        message: `Hub: ${planned} entrenamiento${planned !== 1 ? 's' : ''} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''} sincronizado${done !== 1 ? 's' : ''} localmente`,
       });
+      setWorkoutsVersion(v => v + 1);
     } else {
       setSyncBanner({ type: 'error', message: 'No se pudo obtener el calendario del Hub.' });
     }
