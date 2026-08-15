@@ -317,6 +317,22 @@ export interface HubTrainingSchedule {
   weekly_loads: HubWeeklyLoad[];
 }
 
+export interface HubEndurancePlanStep {
+  order: number;
+  step_type: string;
+  duration_type: string;
+  duration_value: number;
+  target_type?: string | null;
+  target_min_value?: number | null;
+  target_max_value?: number | null;
+  target_percent_ftp?: number | null;
+  target_zone?: number | null;
+  zone_system?: string | null;
+  repeat_times?: number | null;
+  repeat_group_id?: string | null;
+  cadence_rpm?: number | null;
+}
+
 export interface HubEndurancePlanDay {
   date: string;
   name?: string | null;
@@ -328,6 +344,7 @@ export interface HubEndurancePlanDay {
   planned_impulse: number | null;
   target_zones: number[];
   description: string | null;
+  steps: HubEndurancePlanStep[];
   completed: boolean;
   actual_duration_minutes: number | null;
   actual_distance_km: number | null;

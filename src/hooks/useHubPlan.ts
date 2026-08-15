@@ -6,6 +6,7 @@ import {
   collectAndPushAthleteTags,
   HubEndurancePlanPayload,
   HubEndurancePlanDay,
+  HubEndurancePlanStep,
   HubTrainingLogPayload,
 } from '../lib/hubApi';
 import { Workout, WorkoutStep } from '../types/workout';
@@ -164,6 +165,24 @@ function buildStepsDescription(workout: Workout, steps: WorkoutStep[], computedI
   }
 
   return parts.join('\n\n') || workout.name || null!;
+}
+
+function buildStepsForHub(steps: WorkoutStep[]): HubEndurancePlanStep[] {
+  return steps.map(s => ({
+    order: s.order,
+    step_type: s.step_type,
+    duration_type: s.duration_type,
+    duration_value: s.duration_value,
+    target_type: s.target_type ?? null,
+    target_min_value: s.target_min_value ?? null,
+    target_max_value: s.target_max_value ?? null,
+    target_percent_ftp: s.target_percent_ftp ?? null,
+    target_zone: s.target_zone ?? null,
+    zone_system: s.zone_system ?? null,
+    repeat_times: s.repeat_times ?? null,
+    repeat_group_id: s.repeat_group_id ?? null,
+    cadence_rpm: s.cadence_rpm ?? null,
+  }));
 }
 
 interface AthletePhysiologyCache {
@@ -472,6 +491,7 @@ export function useHubPlan(): UseHubPlanResult {
             planned_impulse: plannedImpulse,
             target_zones: targetZones,
             description,
+            steps: buildStepsForHub(steps),
             completed,
             actual_duration_minutes: completed ? (w.actual_duration_minutes ?? null) : null,
             actual_distance_km: null,
