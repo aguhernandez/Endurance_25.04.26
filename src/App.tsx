@@ -100,7 +100,7 @@ function AppContent() {
     }
 
     if (currentView === 'calendar') {
-      return <CalendarView />;
+      return <CalendarView onNavigate={setCurrentView} />;
     }
 
     if (currentView === 'weekly') {
@@ -115,7 +115,7 @@ function AppContent() {
           </div>
         );
       }
-      return <WeeklySummaryView athleteId={athleteId} />;
+      return <WeeklySummaryView athleteId={athleteId} onNavigate={setCurrentView} />;
     }
 
     if (currentView === 'dashboard') {

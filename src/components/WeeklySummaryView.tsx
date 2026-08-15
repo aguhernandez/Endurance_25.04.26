@@ -12,9 +12,10 @@ import WeeklyPlanningGuidance from './WeeklyPlanningGuidance';
 
 interface WeeklySummaryViewProps {
   athleteId: string;
+  onNavigate?: (view: string) => void;
 }
 
-export default function WeeklySummaryView({ athleteId }: WeeklySummaryViewProps) {
+export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySummaryViewProps) {
   const { profile } = useAuth();
   const { plan: atpPlan, events: atpEvents, engineOverrides, loading: atpLoading } = useATPPlan(athleteId);
 
@@ -165,7 +166,15 @@ export default function WeeklySummaryView({ athleteId }: WeeklySummaryViewProps)
     return (
       <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-8 text-center">
         <p className="text-amber-800 dark:text-amber-200 font-semibold mb-2">No Annual Training Plan</p>
-        <p className="text-amber-700 dark:text-amber-300 text-sm">Create an ATP to see weekly summaries</p>
+        <p className="text-amber-700 dark:text-amber-300 text-sm mb-4">Create an ATP to see weekly summaries</p>
+        {onNavigate && (
+          <button
+            onClick={() => onNavigate('atp')}
+            className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-gray-900 text-sm font-semibold transition"
+          >
+            Crear Plan ATP
+          </button>
+        )}
       </div>
     );
   }

@@ -21,6 +21,8 @@ interface SessionsCalendarViewProps {
   isCoach?: boolean;
   currentUserId?: string;
   weeklyAtpSummaries?: WeeklySummaryData[];
+  hasAtpPlan?: boolean;
+  onNavigateToATP?: () => void;
 }
 
 type ViewType = 'day' | 'week' | 'month';
@@ -202,6 +204,8 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
 export default function SessionsCalendarView({
   sessions, ftp, athleteId, onCreateSession, onEditWorkout, onWorkoutsChanged, isCoach = false, currentUserId = '',
   weeklyAtpSummaries = [],
+  hasAtpPlan = true,
+  onNavigateToATP,
 }: SessionsCalendarViewProps) {
   const [viewType, setViewType] = useState<ViewType>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -698,17 +702,15 @@ export default function SessionsCalendarView({
         <div className="p-4">
           {viewType === 'month' && (
             <>
-              <div className={`grid mb-2 ${weeklyAtpSummaries.length > 0 ? 'grid-cols-[repeat(7,1fr)_72px]' : 'grid-cols-7'}`}>
+              <div className="grid mb-2 grid-cols-[repeat(7,1fr)_72px]">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
                   <div key={d} className="text-center text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider py-1.5">
                     {d}
                   </div>
                 ))}
-                {weeklyAtpSummaries.length > 0 && (
-                  <div className="text-center text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider py-1.5">
-                    ATP
-                  </div>
-                )}
+                <div className="text-center text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider py-1.5">
+                  ATP
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -718,7 +720,7 @@ export default function SessionsCalendarView({
                   const atpColors = atpWeek ? getAtpWeekColor(atpWeek) : null;
 
                   return (
-                    <div key={rowIndex} className={`grid gap-1 ${weeklyAtpSummaries.length > 0 ? 'grid-cols-[repeat(7,1fr)_72px]' : 'grid-cols-7'}`}>
+                    <div key={rowIndex} className="grid gap-1 grid-cols-[repeat(7,1fr)_72px]">
                       {row.map((dateForDay, colIndex) => {
                         if (!dateForDay) return <div key={`empty-${rowIndex}-${colIndex}`} className="h-[96px]" />;
 
@@ -793,32 +795,39 @@ export default function SessionsCalendarView({
                         );
                       })}
 
-                      {weeklyAtpSummaries.length > 0 && (
-                        <div className="min-h-[96px] max-h-[120px] flex flex-col items-center justify-center">
-                          {atpWeek && atpColors ? (
-                            <button
-                              onClick={() => setDrawerWeek(atpWeek)}
-                              className={`w-full h-[96px] rounded-lg border flex flex-col items-center justify-center gap-1 px-1 transition-all hover:scale-105 ${atpColors.bg} border-transparent hover:border-current`}
-                            >
-                              <div className={`w-2 h-2 rounded-full ${atpColors.dot}`} />
-                              <p className={`text-[9px] font-bold text-center leading-tight ${atpColors.text}`}>
-                                CA {(atpWeek.actualEndCA || atpWeek.projectedEndCA).toFixed(0)}
-                              </p>
-                              <p className={`text-[9px] font-semibold text-center ${atpColors.text} opacity-80`}>
-                                AF {(atpWeek.actualEndAF || atpWeek.projectedEndAF).toFixed(0)}
-                              </p>
-                              <p className={`text-[9px] font-semibold text-center ${atpColors.text} opacity-70`}>
-                                RB {(atpWeek.actualEndRB || atpWeek.projectedEndRB).toFixed(0)}
-                              </p>
-                              <BarChart2 size={10} className={`${atpColors.text} opacity-60 mt-0.5`} />
-                            </button>
-                          ) : (
-                            <div className="w-full h-[96px] rounded-lg border border-dashed border-gray-200 dark:border-gray-700/50 flex items-center justify-center">
-                              <span className="text-[9px] text-gray-300 dark:text-gray-600">—</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <div className="min-h-[96px] max-h-[120px] flex flex-col items-center justify-center">
+                        {atpWeek && atpColors ? (
+                          <button
+                            onClick={() => setDrawerWeek(atpWeek)}
+                            className={`w-full h-[96px] rounded-lg border flex flex-col items-center justify-center gap-1 px-1 transition-all hover:scale-105 ${atpColors.bg} border-transparent hover:border-current`}
+                          >
+                            <div className={`w-2 h-2 rounded-full ${atpColors.dot}`} />
+                            <p className={`text-[9px] font-bold text-center leading-tight ${atpColors.text}`}>
+                              CA {(atpWeek.actualEndCA || atpWeek.projectedEndCA).toFixed(0)}
+                            </p>
+                            <p className={`text-[9px] font-semibold text-center ${atpColors.text} opacity-80`}>
+                              AF {(atpWeek.actualEndAF || atpWeek.projectedEndAF).toFixed(0)}
+                            </p>
+                            <p className={`text-[9px] font-semibold text-center ${atpColors.text} opacity-70`}>
+                              RB {(atpWeek.actualEndRB || atpWeek.projectedEndRB).toFixed(0)}
+                            </p>
+                            <BarChart2 size={10} className={`${atpColors.text} opacity-60 mt-0.5`} />
+                          </button>
+                        ) : hasAtpPlan ? (
+                          <div className="w-full h-[96px] rounded-lg border border-dashed border-gray-200 dark:border-gray-700/50 flex items-center justify-center">
+                            <span className="text-[9px] text-gray-300 dark:text-gray-600">—</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => onNavigateToATP?.()}
+                            title="No hay plan ATP — click para crear uno"
+                            className="w-full h-[96px] rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-400 dark:hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 flex flex-col items-center justify-center gap-1 transition-all"
+                          >
+                            <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500">N/D</p>
+                            <p className="text-[8px] text-gray-400 dark:text-gray-500 text-center leading-tight">Crear ATP</p>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -831,7 +840,7 @@ export default function SessionsCalendarView({
             const weekAtpColors = weekAtpData ? getAtpWeekColor(weekAtpData) : null;
             return (
             <>
-              {weekAtpData && weekAtpColors && (
+              {weekAtpData && weekAtpColors ? (
                 <div className={`mb-3 flex items-center justify-between px-4 py-2.5 rounded-xl ${weekAtpColors.bg}`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-2.5 h-2.5 rounded-full ${weekAtpColors.dot}`} />
@@ -855,7 +864,22 @@ export default function SessionsCalendarView({
                     </button>
                   </div>
                 </div>
-              )}
+              ) : !hasAtpPlan ? (
+                <button
+                  onClick={() => onNavigateToATP?.()}
+                  className="mb-3 w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-400 dark:hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <BarChart2 size={14} className="text-gray-400 dark:text-gray-500" />
+                    <p className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                      N/D — Sin plan ATP
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition">
+                    Crear ATP →
+                  </span>
+                </button>
+              ) : null}
               <div className="grid grid-cols-7 gap-2">
               {weekDays.map(date => {
                 const dateStr = toLocalDateStr(date);

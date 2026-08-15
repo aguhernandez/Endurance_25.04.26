@@ -20,7 +20,7 @@ interface PendingBuilder {
   scheduledTime?: string;
 }
 
-export default function CalendarView() {
+export default function CalendarView({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const { profile, user } = useAuth();
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [ftp, setFtp] = useState<number | null>(null);
@@ -349,6 +349,8 @@ export default function CalendarView() {
               onEditWorkout={(workout) => setEditingWorkout(workout)}
               onWorkoutsChanged={() => { refreshAtp(); setWorkoutsVersion(v => v + 1); }}
               weeklyAtpSummaries={allWeeks}
+              hasAtpPlan={!!atpPlan}
+              onNavigateToATP={() => onNavigate?.('atp')}
             />
           )}
         </>
