@@ -42,7 +42,7 @@ function computeCompliance(
   plannedName: string,
   actualName: string
 ): 'completed' | 'modified' | 'missed' {
-  if (actualDuration == null && actualImpulse == null) return 'completed';
+  if (actualDuration == null && actualImpulse == null) return 'modified';
 
   const durRatio = plannedDuration && actualDuration
     ? actualDuration / plannedDuration
@@ -50,6 +50,8 @@ function computeCompliance(
   const impulseRatio = plannedImpulse && actualImpulse
     ? actualImpulse / plannedImpulse
     : null;
+
+  if (durRatio == null && impulseRatio == null) return 'modified';
 
   const nameSim = nameSimilarity(plannedName, actualName);
 
@@ -267,6 +269,15 @@ export function useHubSchedule(): UseHubScheduleResult {
         hubGetTrainingSchedule(hubAthleteId, dateFrom, dateTo),
         hubGetExternalActivities(hubAthleteId, dateFrom, dateTo),
       ]);
+
+      console.log('[HubPull] schedule:', scheduleData.scheduled_workouts.map(w => ({
+        date: w.scheduled_date,
+        status: w.status,
+        name: w.workout?.name ?? (w as any).name,
+        actual_duration: (w as any).actual_duration_minutes,
+        actual_impulse: (w as any).actual_impulse,
+      })));
+      console.log('[HubPull] external activities:', activitiesData.length);
 
       setSchedule(scheduleData);
 

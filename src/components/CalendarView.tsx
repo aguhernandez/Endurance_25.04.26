@@ -5,7 +5,7 @@ import SessionsCalendarView from './SessionsCalendarView';
 import WorkoutBuilder from './WorkoutBuilder';
 import AIBlockGenerator from './ai/AIBlockGenerator';
 import { Workout } from '../types/workout';
-import { CalendarRange, Users, ChevronDown, Activity, Clock, TrendingUp, Upload, Download, CheckCircle, AlertCircle, RefreshCw, X, Sparkles } from 'lucide-react';
+import { CalendarRange, Users, ChevronDown, ChevronLeft, ChevronRight, Activity, Clock, TrendingUp, Upload, Download, CheckCircle, AlertCircle, RefreshCw, X, Sparkles } from 'lucide-react';
 import { useAthletePhysiology, extractHRZones, extractPowerZones, extractRunPaceZones, extractSwimPaceZones, getDefaultHRZones, getDefaultPowerZones } from '../hooks/useAthletePhysiology';
 import { useHubPlan } from '../hooks/useHubPlan';
 import { useHubSchedule } from '../hooks/useHubSchedule';
@@ -32,6 +32,7 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   const [syncBanner, setSyncBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showAIGenerator, setShowAIGenerator] = useState(false);
   const [workoutsVersion, setWorkoutsVersion] = useState(0);
+  const [pullMonthOffset, setPullMonthOffset] = useState(0);
 
   const { pushing, pushWeeklyPlan } = useHubPlan();
   const { loading: pullLoading, fetchSchedule, activitiesCount } = useHubSchedule();
@@ -70,30 +71,38 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   const handlePullActivity = async () => {
     if (!activeHubId || !activeAthleteId) return;
     setSyncBanner(null);
-    const today = new Date();
-    const from = new Date(today); from.setDate(today.getDate() - 14);
-    const to = new Date(today); to.setDate(today.getDate() + 28);
+    const base = new Date();
+    base.setDate(1);
+    base.setMonth(base.getMonth() + pullMonthOffset);
+    const from = new Date(base);
+    const to = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    const fromStr = from.toISOString().split('T')[0];
+    const toStr = to.toISOString().split('T')[0];
+    const monthLabel = base.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
     const result = await fetchSchedule(
       activeHubId,
       activeAthleteId,
-      from.toISOString().split('T')[0],
-      to.toISOString().split('T')[0]
+      fromStr,
+      toStr
     );
     if (result) {
-      const done = result.scheduled_workouts.filter(w => w.status === 'completed').length;
+      const completed = result.scheduled_workouts.filter(w => w.status === 'completed');
+      const done = completed.length;
       const planned = result.scheduled_workouts.length;
+      const pending = result.scheduled_workouts.filter(w => w.status === 'pending' || w.status === 'planned').length;
+      const skipped = result.scheduled_workouts.filter(w => w.status === 'skipped').length;
       const actsText = activitiesCount > 0
         ? `, ${activitiesCount} actividad${activitiesCount !== 1 ? 'es' : ''} externa${activitiesCount !== 1 ? 's' : ''} importada${activitiesCount !== 1 ? 's' : ''}`
         : '';
       setSyncBanner({
         type: 'success',
-        message: `Hub: ${planned} entrenamiento${planned !== 1 ? 's' : ''} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''} sincronizado${done !== 1 ? 's' : ''}${actsText}. Verde=ok, Amarillo=modificado, Rojo=no hecho`,
+        message: `${monthLabel}: ${planned} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''}, ${pending} pendiente${pending !== 1 ? 's' : ''}${skipped > 0 ? `, ${skipped} salteado${skipped !== 1 ? 's' : ''}` : ''}${actsText}`,
       });
       setWorkoutsVersion(v => v + 1);
     } else {
       setSyncBanner({ type: 'error', message: 'No se pudo obtener el calendario del Hub.' });
     }
-    setTimeout(() => setSyncBanner(null), 5000);
+    setTimeout(() => setSyncBanner(null), 8000);
   };
 
   useEffect(() => {
@@ -204,17 +213,35 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
 
             {activeHubId && (
               <>
-                <button
-                  onClick={handlePullActivity}
-                  disabled={pullLoading}
-                  title="Pull activity from Hub — see what was done vs planned"
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-400 text-blue-700 dark:text-blue-300 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {pullLoading
-                    ? <RefreshCw size={15} className="animate-spin" />
-                    : <Download size={15} />}
-                  Pull Hub
-                </button>
+                <div className="flex items-center gap-1 rounded-xl border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 overflow-hidden">
+                  <button
+                    onClick={() => setPullMonthOffset(o => o - 1)}
+                    disabled={pullLoading}
+                    className="px-2 py-2 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50"
+                    title="Mes anterior"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <button
+                    onClick={handlePullActivity}
+                    disabled={pullLoading}
+                    title={`Pull del Hub — ${pullMonthOffset === 0 ? 'mes actual' : pullMonthOffset < 0 ? `${Math.abs(pullMonthOffset)} mes${Math.abs(pullMonthOffset) !== 1 ? 'es' : ''} atrás` : `${pullMonthOffset} mes${pullMonthOffset !== 1 ? 'es' : ''} adelante`}`}
+                    className="flex items-center gap-1.5 px-3 py-2 text-blue-700 dark:text-blue-300 text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed border-x border-blue-100 dark:border-blue-800"
+                  >
+                    {pullLoading
+                      ? <RefreshCw size={15} className="animate-spin" />
+                      : <Download size={15} />}
+                    Pull {pullMonthOffset === 0 ? 'este mes' : pullMonthOffset < 0 ? `-${Math.abs(pullMonthOffset)}` : `+${pullMonthOffset}`}
+                  </button>
+                  <button
+                    onClick={() => setPullMonthOffset(o => o + 1)}
+                    disabled={pullLoading}
+                    className="px-2 py-2 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50"
+                    title="Mes siguiente"
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
                 <button
                   onClick={handlePushPlan}
                   disabled={pushing}
