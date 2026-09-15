@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { TrainingSession, supabase } from '../lib/supabase';
 import { ChevronLeft, ChevronRight, Clock, TrendingUp, Zap, Activity, Gauge, Plus, BookOpen, Dumbbell, CreditCard as Edit2, Trash2, Copy, CopyCheck, X, BarChart2, Tag as TagIcon } from 'lucide-react';
@@ -10,6 +10,8 @@ import { getSportIcon, formatPace, formatPacePer100m } from '../lib/calculations
 import { useSessionDifficulty } from '../hooks/useSessionDifficulty';
 import { getDifficultyClasses, getDifficultyLabel, SSRResult } from '../lib/sessionDifficulty';
 import { WeeklySummaryData } from '../lib/weeklySummary';
+import { WorkoutDetailModal } from './detail/WorkoutDetailModal';
+import { WorkoutData } from '../types/workoutDetail';
 
 interface SessionsCalendarViewProps {
   sessions: TrainingSession[];
@@ -142,10 +144,11 @@ interface WorkoutPillProps {
   onCopy: (w: Workout) => void;
   onDelete: (w: Workout) => void;
   onDragStart: (w: Workout) => void;
+  onViewDetail?: (w: Workout) => void;
   compact?: boolean;
 }
 
-function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelete, onDragStart, compact = false }: WorkoutPillProps) {
+function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelete, onDragStart, onViewDetail, compact = false }: WorkoutPillProps) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const pillRef = useRef<HTMLDivElement>(null);
 
@@ -167,8 +170,14 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
     missed: 'bg-red-500',
   };
 
+  const isCompleted = workout.status === 'completed' || compliance === 'completed' || compliance === 'modified';
+
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isCompleted && onViewDetail) {
+      onViewDetail(workout);
+      return;
+    }
     if (menuPos) {
       setMenuPos(null);
       return;
@@ -239,6 +248,57 @@ export default function SessionsCalendarView({
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Workout | null>(null);
   const [drawerWeek, setDrawerWeek] = useState<WeeklySummaryData | null>(null);
+  const [detailWorkout, setDetailWorkout] = useState<WorkoutData | null>(null);
+
+  const handleViewDetail = useCallback((w: Workout) => {
+    const hubData = (w.hub_data ?? null) as Record<string, unknown> | null;
+    const data: WorkoutData = {
+      id: w.id,
+      name: w.name,
+      date: w.scheduled_date,
+      sport: w.sport,
+      distance: (hubData?.actual_distance_km as number) ?? null,
+      duration: w.actual_duration_minutes ? w.actual_duration_minutes * 60 : null,
+      duration_seconds: w.actual_duration_minutes ? w.actual_duration_minutes * 60 : null,
+      distance_km: (hubData?.actual_distance_km as number) ?? null,
+      actual_duration_minutes: w.actual_duration_minutes ?? null,
+      actual_distance_km: (hubData?.actual_distance_km as number) ?? null,
+      actual_avg_hr: (hubData?.actual_avg_hr as number) ?? null,
+      actual_max_hr: (hubData?.actual_max_hr as number) ?? null,
+      actual_avg_power_watts: (hubData?.actual_avg_power_watts as number) ?? null,
+      actual_max_power_watts: (hubData?.actual_max_power_watts as number) ?? null,
+      actual_avg_cadence: (hubData?.actual_avg_cadence as number) ?? null,
+      actual_avg_speed_kmh: (hubData?.actual_avg_speed_kmh as number) ?? null,
+      actual_elevation_gain_m: (hubData?.actual_elevation_gain_m as number) ?? null,
+      actual_elevation_loss_m: (hubData?.actual_elevation_loss_m as number) ?? null,
+      actual_calories: (hubData?.actual_calories as number) ?? null,
+      actual_tss: (hubData?.actual_tss as number) ?? null,
+      actual_impulse: w.actual_impulse ?? null,
+      rpe: w.rpe ?? null,
+      compliance_percent: (hubData?.compliance_percent as number) ?? null,
+      athlete_notes: (hubData?.athlete_notes as string) ?? w.notes ?? null,
+      athlete_feedback: (hubData?.athlete_feedback as string) ?? null,
+      athlete_feeling: (hubData?.athlete_feeling as string) ?? null,
+      coach_notes: (hubData?.coach_notes as string) ?? null,
+      normalized_power_watts: (hubData?.normalized_power_watts as number) ?? null,
+      map: (hubData?.gps_track as any) ?? null,
+      gps_track: (hubData?.gps_track as any) ?? null,
+      splits: (hubData?.splits as any) ?? null,
+      pace: (hubData?.pace as number[]) ?? null,
+      pace_sec_per_km: (hubData?.pace_sec_per_km as number[]) ?? null,
+      heartRate: (hubData?.heart_rate as number[]) ?? null,
+      heart_rate: (hubData?.heart_rate as number[]) ?? null,
+      cadence: (hubData?.cadence as number[]) ?? null,
+      cadence_rpm: (hubData?.cadence_rpm as number[]) ?? null,
+      watts: (hubData?.watts as number[]) ?? null,
+      power_watts: (hubData?.power_watts as number[]) ?? null,
+      elevation: (hubData?.elevation as number[]) ?? null,
+      zone_distribution: (hubData?.zone_distribution as any) ?? null,
+      activity_log: (hubData?.activity_log as any) ?? null,
+      summary: hubData?.summary as Record<string, number | string | null> | undefined,
+    };
+    setDetailWorkout(data);
+  }, []);
 
   useEffect(() => {
     if (athleteId || currentUserId) {
@@ -621,6 +681,7 @@ export default function SessionsCalendarView({
         onCopy={handleCopyWorkout}
         onDelete={w => setDeleteConfirm(w)}
         onDragStart={handleDragStart}
+        onViewDetail={handleViewDetail}
       />
     );
   };
@@ -1178,6 +1239,15 @@ export default function SessionsCalendarView({
         <WeeklyAtpDrawer
           week={drawerWeek}
           onClose={() => setDrawerWeek(null)}
+        />
+      )}
+
+      {detailWorkout && (
+        <WorkoutDetailModal
+          isOpen={true}
+          onClose={() => setDetailWorkout(null)}
+          workoutData={detailWorkout}
+          userRole={isCoach ? 'coach' : 'athlete'}
         />
       )}
     </div>

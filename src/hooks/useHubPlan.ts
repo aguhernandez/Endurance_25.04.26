@@ -248,7 +248,7 @@ async function loadAthleteFTP(athleteId: string): Promise<number | null> {
       .from('athlete_ftp')
       .select('current_ftp_watts')
       .eq('athlete_id', athleteId)
-      .order('recorded_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     return data?.current_ftp_watts ?? null;

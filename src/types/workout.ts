@@ -67,6 +67,9 @@ export interface Workout {
   completed_at?: string;
   difficulty_color?: 'green' | 'yellow' | 'red' | null;
   compliance_status?: 'completed' | 'modified' | 'missed' | null;
+  hub_matched_key?: string | null;
+  hub_data?: Record<string, unknown> | null;
+  local_data?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   steps?: WorkoutStep[];

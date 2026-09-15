@@ -54,7 +54,7 @@ export function useWeeklyAtpSummary(athleteId: string | null | undefined): Weekl
           .from('athlete_ftp')
           .select('current_ftp_watts')
           .eq('athlete_id', id)
-          .order('recorded_at', { ascending: false })
+          .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
         supabase
