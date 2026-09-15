@@ -170,11 +170,9 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
     missed: 'bg-red-500',
   };
 
-  const isCompleted = workout.status === 'completed' || compliance === 'completed' || compliance === 'modified';
-
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isCompleted && onViewDetail) {
+    if (onViewDetail) {
       onViewDetail(workout);
       return;
     }
@@ -334,18 +332,20 @@ export default function SessionsCalendarView({
 
       if (ws.length > 0) {
         const ids = ws.map((w: Workout) => w.id);
-        const { data: wtRows } = await supabase
-          .from('workout_tags')
-          .select('workout_id, tags(*)')
-          .in('workout_id', ids);
-        if (wtRows) {
-          const map: Record<string, Tag[]> = {};
-          for (const row of wtRows as any[]) {
-            if (!map[row.workout_id]) map[row.workout_id] = [];
-            if (row.tags) map[row.workout_id].push(row.tags as Tag);
+        const map: Record<string, Tag[]> = {};
+        for (let start = 0; start < ids.length; start += 20) {
+          const { data: wtRows } = await supabase
+            .from('workout_tags')
+            .select('workout_id, tags(*)')
+            .in('workout_id', ids.slice(start, start + 20));
+          if (wtRows) {
+            for (const row of wtRows as any[]) {
+              if (!map[row.workout_id]) map[row.workout_id] = [];
+              if (row.tags) map[row.workout_id].push(row.tags as Tag);
+            }
           }
-          setWorkoutTagsMap(map);
         }
+        setWorkoutTagsMap(map);
       }
     } catch (err) {
       console.error('Error loading workouts:', err);

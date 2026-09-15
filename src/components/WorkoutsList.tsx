@@ -370,7 +370,7 @@ export default function WorkoutsList({ coachId, isCoach }: WorkoutsListProps) {
       const ids = (data || []).map((w: Workout) => w.id);
       if (ids.length > 0) {
         const cache: { [key: string]: WorkoutStep[] } = {};
-        for (let start = 0; start < ids.length; start += 100) {
+        for (let start = 0; start < ids.length; start += 20) {
           const { data: stepsData, error: stepsError } = await supabase
             .from('workout_steps')
             .select('*')

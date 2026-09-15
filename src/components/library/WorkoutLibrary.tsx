@@ -84,11 +84,11 @@ export default function WorkoutLibrary({ coachId, isCoach }: WorkoutLibraryProps
       const ids = data.map((w: Workout) => w.id);
       if (ids.length > 0) {
         const cache: Record<string, WorkoutStep[]> = {};
-        for (let start = 0; start < ids.length; start += 100) {
+        for (let start = 0; start < ids.length; start += 20) {
           const { data: stepsChunk, error: stepsError } = await supabase
             .from('workout_steps')
             .select('*')
-            .in('workout_id', ids.slice(start, start + 100))
+            .in('workout_id', ids.slice(start, start + 20))
             .order('order');
           if (stepsError) {
             console.error('Error loading library workout steps:', stepsError);
@@ -101,15 +101,18 @@ export default function WorkoutLibrary({ coachId, isCoach }: WorkoutLibraryProps
         }
         setStepsCache(cache);
 
-        const { data: wtData } = await supabase
-          .from('workout_tags')
-          .select('workout_id, tags(*)')
-          .in('workout_id', ids);
-        if (wtData) {
-          const map: Record<string, TagType[]> = {};
-          for (const row of wtData as any[]) {
-            if (!map[row.workout_id]) map[row.workout_id] = [];
-            if (row.tags) map[row.workout_id].push(row.tags as TagType);
+        const map: Record<string, TagType[]> = {};
+        for (let tagStart = 0; tagStart < ids.length; tagStart += 20) {
+          const { data: wtData } = await supabase
+            .from('workout_tags')
+            .select('workout_id, tags(*)')
+            .in('workout_id', ids.slice(tagStart, tagStart + 20));
+            if (wtData) {
+              for (const row of wtData as any[]) {
+                if (!map[row.workout_id]) map[row.workout_id] = [];
+                if (row.tags) map[row.workout_id].push(row.tags as TagType);
+              }
+            }
           }
           setWorkoutTagsMap(map);
 
@@ -123,7 +126,6 @@ export default function WorkoutLibrary({ coachId, isCoach }: WorkoutLibraryProps
           setAllTags(tags.sort((a, b) => a.name.localeCompare(b.name)));
         }
       }
-    }
     setLoading(false);
   }
 

@@ -421,7 +421,7 @@ export function useHubPlan(): UseHubPlanResult {
 
       const workoutIds = workouts.map(w => w.id);
       const allSteps: WorkoutStep[] = [];
-      for (let start = 0; start < workoutIds.length; start += 100) {
+      for (let start = 0; start < workoutIds.length; start += 20) {
         const { data: stepsChunk, error: stepsError } = await supabase
           .from('workout_steps')
           .select('*')

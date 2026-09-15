@@ -639,28 +639,30 @@ export async function collectAndPushAthleteTags(
 
     const workoutIds = workoutRows.map((w: any) => w.id);
 
-    const { data: wtRows } = await supabase
-      .from('workout_tags')
-      .select('workout_id, tags(*)')
-      .in('workout_id', workoutIds);
-
     const tagMap = new Map<string, HubTagPayload>();
 
-    if (wtRows) {
-      for (const row of wtRows as any[]) {
-        const t = row.tags;
-        if (t && !tagMap.has(t.slug)) {
-          tagMap.set(t.slug, {
-            name: t.name,
-            name_es: t.name_es ?? undefined,
-            slug: t.slug,
-            category: t.category,
-            color: t.color ?? undefined,
-            description: t.description ?? undefined,
-            source_context: sourceContext,
+    for (let tagStart = 0; tagStart < workoutIds.length; tagStart += 20) {
+      const { data: wtRows } = await supabase
+        .from('workout_tags')
+        .select('workout_id, tags(*)')
+        .in('workout_id', workoutIds.slice(tagStart, tagStart + 20));
+
+      if (wtRows) {
+        for (const row of wtRows as any[]) {
+          const t = row.tags;
+          if (t && !tagMap.has(t.slug)) {
+            tagMap.set(t.slug, {
+              name: t.name,
+              name_es: t.name_es ?? undefined,
+              slug: t.slug,
+              category: t.category,
+              color: t.color ?? undefined,
+              description: t.description ?? undefined,
+              source_context: sourceContext,
           });
         }
       }
+    }
     }
 
     if (tagMap.size === 0) return { success: true, saved: [], errors: [], message: 'No tags to sync' };
