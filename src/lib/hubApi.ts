@@ -415,7 +415,7 @@ export interface HubCoachAthlete {
 export async function hubGetCoachAthletes(coachHubId: string): Promise<HubCoachAthlete[]> {
   const headers = await plannerHeaders();
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/coach-athletes?coach_id=${encodeURIComponent(coachHubId)}`,
+    `${BASE_URL}/endurance-satellite-bridge/coach-athletes?coach_id=${encodeURIComponent(coachHubId)}`,
     { headers }
   );
   if (!res.ok) {
@@ -429,7 +429,7 @@ export async function hubGetCoachAthletes(coachHubId: string): Promise<HubCoachA
 export async function hubGetAthleteProfile(athleteId: string, fallbackEmail?: string): Promise<HubAthleteProfile> {
   const headers = await plannerHeaders();
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/athlete-profile?athlete_id=${encodeURIComponent(athleteId)}`,
+    `${BASE_URL}/endurance-satellite-bridge/athlete-profile?athlete_id=${encodeURIComponent(athleteId)}`,
     { headers }
   );
   if (!res.ok) {
@@ -439,7 +439,7 @@ export async function hubGetAthleteProfile(athleteId: string, fallbackEmail?: st
     if (fallbackEmail) {
       console.log('[HubApi] Trying athlete-profile by email:', fallbackEmail);
       const res2 = await fetch(
-        `${BASE_URL}/planner-hub-api/athlete-profile?athlete_email=${encodeURIComponent(fallbackEmail)}`,
+        `${BASE_URL}/endurance-satellite-bridge/athlete-profile?athlete_email=${encodeURIComponent(fallbackEmail)}`,
         { headers }
       );
       if (!res2.ok) {
@@ -456,7 +456,7 @@ export async function hubGetAthleteProfile(athleteId: string, fallbackEmail?: st
 export async function hubGetBiologicalPassport(athleteId: string, fallbackEmail?: string): Promise<HubBiologicalPassport> {
   const headers = await plannerHeaders();
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/biological-passport?athlete_id=${encodeURIComponent(athleteId)}`,
+    `${BASE_URL}/endurance-satellite-bridge/biological-passport?athlete_id=${encodeURIComponent(athleteId)}`,
     { headers }
   );
   if (!res.ok) {
@@ -466,7 +466,7 @@ export async function hubGetBiologicalPassport(athleteId: string, fallbackEmail?
     if (fallbackEmail) {
       console.log('[HubApi] Trying biological-passport by email:', fallbackEmail);
       const res2 = await fetch(
-        `${BASE_URL}/planner-hub-api/biological-passport?athlete_email=${encodeURIComponent(fallbackEmail)}`,
+        `${BASE_URL}/endurance-satellite-bridge/biological-passport?athlete_email=${encodeURIComponent(fallbackEmail)}`,
         { headers }
       );
       if (!res2.ok) {
@@ -491,7 +491,7 @@ export async function hubGetTrainingSchedule(
     date_to: dateTo,
   });
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/training-schedule?${params}`,
+    `${BASE_URL}/endurance-satellite-bridge/training-schedule?${params}`,
     { headers: await plannerHeaders() }
   );
   return handleResponse<HubTrainingSchedule>(res);
@@ -524,7 +524,7 @@ export async function hubGetExternalActivities(
     date_to: dateTo,
   });
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/activities?${params}`,
+    `${BASE_URL}/endurance-satellite-bridge/activities?${params}`,
     { headers: await plannerHeaders() }
   );
   if (!res.ok) {
@@ -540,7 +540,7 @@ export async function hubPushEndurancePlan(
   payload: HubEndurancePlanPayload
 ): Promise<{ success: boolean; record: { id: string; week_start_date: string; plan_name: string | null; updated_at: string }; message: string }> {
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/push-endurance-plan?athlete_id=${encodeURIComponent(athleteId)}`,
+    `${BASE_URL}/endurance-satellite-bridge/push-endurance-plan?athlete_id=${encodeURIComponent(athleteId)}`,
     {
       method: 'POST',
       headers: await plannerHeaders(),
@@ -555,7 +555,7 @@ export async function hubPushTrainingLog(
   payload: HubTrainingLogPayload
 ): Promise<{ success: boolean; record: { id: string; training_date: string; workout_type: string; duration_minutes: number }; message: string }> {
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/push-training-log?athlete_id=${encodeURIComponent(athleteId)}`,
+    `${BASE_URL}/endurance-satellite-bridge/push-training-log?athlete_id=${encodeURIComponent(athleteId)}`,
     {
       method: 'POST',
       headers: await plannerHeaders(),
@@ -587,7 +587,7 @@ export async function hubGetTrainingLog(
   trainingLogId: string
 ): Promise<HubCompletedLog> {
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/training-log?athlete_id=${encodeURIComponent(athleteId)}&log_id=${encodeURIComponent(trainingLogId)}`,
+    `${BASE_URL}/endurance-satellite-bridge/training-log?athlete_id=${encodeURIComponent(athleteId)}&log_id=${encodeURIComponent(trainingLogId)}`,
     { headers: await plannerHeaders() }
   );
   return handleResponse<HubCompletedLog>(res);
@@ -600,7 +600,7 @@ export async function hubGetTrainingLogs(
 ): Promise<HubCompletedLog[]> {
   const params = new URLSearchParams({ athlete_id: athleteId, date_from: dateFrom, date_to: dateTo });
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/training-logs?${params}`,
+    `${BASE_URL}/endurance-satellite-bridge/training-logs?${params}`,
     { headers: await plannerHeaders() }
   );
   const json = await handleResponse<{ logs?: HubCompletedLog[]; data?: HubCompletedLog[] }>(res);
@@ -612,7 +612,7 @@ export async function hubPushTags(
   tags: HubTagPayload[]
 ): Promise<HubPushTagsResult> {
   const res = await fetch(
-    `${BASE_URL}/planner-hub-api/push-tags?athlete_id=${encodeURIComponent(athleteId)}`,
+    `${BASE_URL}/endurance-satellite-bridge/push-tags?athlete_id=${encodeURIComponent(athleteId)}`,
     {
       method: 'POST',
       headers: await plannerHeaders(),
