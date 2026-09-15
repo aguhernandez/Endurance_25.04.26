@@ -246,12 +246,12 @@ async function loadAthleteFTP(athleteId: string): Promise<number | null> {
   try {
     const { data } = await supabase
       .from('athlete_ftp')
-      .select('ftp_watts')
+      .select('current_ftp_watts')
       .eq('athlete_id', athleteId)
       .order('recorded_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    return data?.ftp_watts ?? null;
+    return data?.current_ftp_watts ?? null;
   } catch {
     return null;
   }
@@ -420,11 +420,16 @@ export function useHubPlan(): UseHubPlanResult {
       }
 
       const workoutIds = workouts.map(w => w.id);
-      const { data: allSteps } = await supabase
-        .from('workout_steps')
-        .select('*')
-        .in('workout_id', workoutIds)
-        .order('order');
+      const allSteps: WorkoutStep[] = [];
+      for (let start = 0; start < workoutIds.length; start += 100) {
+        const { data: stepsChunk, error: stepsError } = await supabase
+          .from('workout_steps')
+          .select('*')
+          .in('workout_id', workoutIds.slice(start, start + 100))
+          .order('order');
+        if (stepsError) throw new Error(stepsError.message);
+        allSteps.push(...(stepsChunk || []));
+      }
 
       const stepsByWorkout = new Map<string, WorkoutStep[]>();
       for (const step of (allSteps || [])) {

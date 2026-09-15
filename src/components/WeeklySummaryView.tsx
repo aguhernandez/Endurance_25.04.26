@@ -88,7 +88,7 @@ export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySumma
       const [ftpResult, physResult, sessionsResult, workoutsResult, profileResult] = await Promise.all([
         supabase
           .from('athlete_ftp')
-          .select('ftp_watts')
+          .select('current_ftp_watts')
           .eq('athlete_id', athleteId)
           .order('recorded_at', { ascending: false })
           .limit(1)
@@ -119,7 +119,7 @@ export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySumma
           .maybeSingle(),
       ]);
 
-      const ftpValue = ftpResult.data?.ftp_watts ?? null;
+      const ftpValue = ftpResult.data?.current_ftp_watts ?? null;
       const physValue = physResult.data as PhysiologyData | null;
       const sessions = (sessionsResult.data || []) as CompletedSession[];
       const workouts = (workoutsResult.data || []) as PlannedWorkout[];

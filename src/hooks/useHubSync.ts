@@ -79,7 +79,7 @@ export async function pushAthleteThresholds(
     };
 
     if (ftpWatts) {
-      payload.ftp_watts = ftpWatts;
+      payload.current_ftp_watts = ftpWatts;
       if (physiology) {
         payload.power_z1_min = physiology.power_z1_min ? Math.round(ftpWatts * physiology.power_z1_min / 100) : null;
         payload.power_z1_max = physiology.power_z1_max ? Math.round(ftpWatts * physiology.power_z1_max / 100) : null;

@@ -83,19 +83,23 @@ export default function WorkoutLibrary({ coachId, isCoach }: WorkoutLibraryProps
       setWorkouts(data);
       const ids = data.map((w: Workout) => w.id);
       if (ids.length > 0) {
-        const { data: stepsData } = await supabase
-          .from('workout_steps')
-          .select('*')
-          .in('workout_id', ids)
-          .order('order');
-        if (stepsData) {
-          const cache: Record<string, WorkoutStep[]> = {};
-          for (const step of stepsData) {
+        const cache: Record<string, WorkoutStep[]> = {};
+        for (let start = 0; start < ids.length; start += 100) {
+          const { data: stepsChunk, error: stepsError } = await supabase
+            .from('workout_steps')
+            .select('*')
+            .in('workout_id', ids.slice(start, start + 100))
+            .order('order');
+          if (stepsError) {
+            console.error('Error loading library workout steps:', stepsError);
+            continue;
+          }
+          for (const step of stepsChunk || []) {
             if (!cache[step.workout_id]) cache[step.workout_id] = [];
             cache[step.workout_id].push(step);
           }
-          setStepsCache(cache);
         }
+        setStepsCache(cache);
 
         const { data: wtData } = await supabase
           .from('workout_tags')

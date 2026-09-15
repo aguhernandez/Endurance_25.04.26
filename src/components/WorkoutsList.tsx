@@ -279,7 +279,7 @@ export default function WorkoutsList({ coachId, isCoach }: WorkoutsListProps) {
     const [ftpResult, physResult, sessionsResult] = await Promise.all([
       supabase
         .from('athlete_ftp')
-        .select('ftp_watts')
+        .select('current_ftp_watts')
         .eq('athlete_id', coachId)
         .order('recorded_at', { ascending: false })
         .limit(1)
@@ -302,7 +302,7 @@ export default function WorkoutsList({ coachId, isCoach }: WorkoutsListProps) {
         .order('session_date'),
     ]);
 
-    const ftp = ftpResult.data?.ftp_watts ?? null;
+    const ftp = ftpResult.data?.current_ftp_watts ?? null;
     const phys = physResult.data;
 
     let runThreshold: number | null = null;
@@ -369,19 +369,23 @@ export default function WorkoutsList({ coachId, isCoach }: WorkoutsListProps) {
       setWorkouts(data || []);
       const ids = (data || []).map((w: Workout) => w.id);
       if (ids.length > 0) {
-        const { data: stepsData } = await supabase
-          .from('workout_steps')
-          .select('*')
-          .in('workout_id', ids)
-          .order('order');
-        if (stepsData) {
-          const cache: { [key: string]: WorkoutStep[] } = {};
-          for (const step of stepsData) {
+        const cache: { [key: string]: WorkoutStep[] } = {};
+        for (let start = 0; start < ids.length; start += 100) {
+          const { data: stepsData, error: stepsError } = await supabase
+            .from('workout_steps')
+            .select('*')
+            .in('workout_id', ids.slice(start, start + 100))
+            .order('order');
+          if (stepsError) {
+            console.error('Error loading workout steps:', stepsError);
+            continue;
+          }
+          for (const step of stepsData || []) {
             if (!cache[step.workout_id]) cache[step.workout_id] = [];
             cache[step.workout_id].push(step);
           }
-          setWorkoutSteps(cache);
         }
+        setWorkoutSteps(cache);
       }
     }
     setLoading(false);

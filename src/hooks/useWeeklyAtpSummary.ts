@@ -52,7 +52,7 @@ export function useWeeklyAtpSummary(athleteId: string | null | undefined): Weekl
           .maybeSingle(),
         supabase
           .from('athlete_ftp')
-          .select('ftp_watts')
+          .select('current_ftp_watts')
           .eq('athlete_id', id)
           .order('recorded_at', { ascending: false })
           .limit(1)
@@ -128,7 +128,7 @@ export function useWeeklyAtpSummary(athleteId: string | null | undefined): Weekl
         return;
       }
 
-      const ftp = ftpRes.data?.ftp_watts ?? null;
+      const ftp = ftpRes.data?.current_ftp_watts ?? null;
       const physiology = physRes.data as PhysiologyData | null;
       const completedSessions = (sessionsRes.data || []) as CompletedSession[];
       const plannedWorkouts = (workoutsRes.data || []) as PlannedWorkout[];
