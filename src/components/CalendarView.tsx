@@ -34,7 +34,7 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   const [workoutsVersion, setWorkoutsVersion] = useState(0);
 
   const { pushing, pushWeeklyPlan } = useHubPlan();
-  const { loading: pullLoading, fetchSchedule } = useHubSchedule();
+  const { loading: pullLoading, fetchSchedule, activitiesCount } = useHubSchedule();
 
   const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
   const coachHubId = isCoach ? user?.id : undefined;
@@ -82,9 +82,12 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
     if (result) {
       const done = result.scheduled_workouts.filter(w => w.status === 'completed').length;
       const planned = result.scheduled_workouts.length;
+      const actsText = activitiesCount > 0
+        ? `, ${activitiesCount} actividad${activitiesCount !== 1 ? 'es' : ''} externa${activitiesCount !== 1 ? 's' : ''} importada${activitiesCount !== 1 ? 's' : ''}`
+        : '';
       setSyncBanner({
         type: 'success',
-        message: `Hub: ${planned} entrenamiento${planned !== 1 ? 's' : ''} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''} sincronizado${done !== 1 ? 's' : ''} localmente`,
+        message: `Hub: ${planned} entrenamiento${planned !== 1 ? 's' : ''} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''} sincronizado${done !== 1 ? 's' : ''}${actsText}`,
       });
       setWorkoutsVersion(v => v + 1);
     } else {

@@ -497,6 +497,44 @@ export async function hubGetTrainingSchedule(
   return handleResponse<HubTrainingSchedule>(res);
 }
 
+export interface HubExternalActivity {
+  id: string;
+  user_id: string;
+  name: string;
+  source: string;
+  sport_type: string;
+  distance_meters: number | null;
+  duration_seconds: number | null;
+  calories: number | null;
+  start_time: string;
+  local_date: string;
+  raw_data?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function hubGetExternalActivities(
+  athleteId: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<HubExternalActivity[]> {
+  const params = new URLSearchParams({
+    athlete_id: athleteId,
+    date_from: dateFrom,
+    date_to: dateTo,
+  });
+  const res = await fetch(
+    `${BASE_URL}/planner-hub-api/activities?${params}`,
+    { headers: await plannerHeaders() }
+  );
+  if (!res.ok) {
+    console.warn('[HubApi] activities endpoint failed', res.status);
+    return [];
+  }
+  const json = await res.json();
+  return json.activities || json.data || [];
+}
+
 export async function hubPushEndurancePlan(
   athleteId: string,
   payload: HubEndurancePlanPayload
