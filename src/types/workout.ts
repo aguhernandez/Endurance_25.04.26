@@ -66,6 +66,7 @@ export interface Workout {
   scheduled_time?: string;
   completed_at?: string;
   difficulty_color?: 'green' | 'yellow' | 'red' | null;
+  compliance_status?: 'completed' | 'modified' | 'missed' | null;
   created_at: string;
   updated_at: string;
   steps?: WorkoutStep[];

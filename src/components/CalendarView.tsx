@@ -87,7 +87,7 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
         : '';
       setSyncBanner({
         type: 'success',
-        message: `Hub: ${planned} entrenamiento${planned !== 1 ? 's' : ''} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''} sincronizado${done !== 1 ? 's' : ''}${actsText}`,
+        message: `Hub: ${planned} entrenamiento${planned !== 1 ? 's' : ''} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''} sincronizado${done !== 1 ? 's' : ''}${actsText}. Verde=ok, Amarillo=modificado, Rojo=no hecho`,
       });
       setWorkoutsVersion(v => v + 1);
     } else {

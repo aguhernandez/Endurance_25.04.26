@@ -153,6 +153,20 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
     ? getDifficultyClasses(difficulty.difficulty)
     : getSportColor(workout.sport);
 
+  const compliance = workout.compliance_status;
+
+  const complianceRing: Record<string, string> = {
+    completed: 'ring-2 ring-emerald-500',
+    modified: 'ring-2 ring-amber-500',
+    missed: 'ring-2 ring-red-500',
+  };
+
+  const complianceDot: Record<string, string> = {
+    completed: 'bg-emerald-500',
+    modified: 'bg-amber-500',
+    missed: 'bg-red-500',
+  };
+
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (menuPos) {
@@ -175,11 +189,15 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
       }}
       className={`relative group cursor-pointer select-none ${
         compact ? 'text-[10px] px-1.5 py-1' : 'text-xs p-1.5'
-      } rounded-lg border ${colors.bg} ${colors.text} ${colors.border} transition hover:shadow-sm hover:brightness-95`}
+      } rounded-lg border ${colors.bg} ${colors.text} ${colors.border} ${compliance ? complianceRing[compliance] : ''} transition hover:shadow-sm hover:brightness-95`}
       onClick={handleClick}
     >
       <div className="flex items-center gap-1 min-w-0">
-        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
+        {compliance ? (
+          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${complianceDot[compliance]}`} title={compliance === 'completed' ? 'Completado correctamente' : compliance === 'modified' ? 'Modificado' : 'No realizado'} />
+        ) : (
+          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
+        )}
         <span className="truncate font-semibold leading-tight">{workout.name}</span>
         {!compact && workout.estimated_duration_minutes && (
           <span className="opacity-60 flex-shrink-0">{workout.estimated_duration_minutes}m</span>

@@ -20,53 +20,134 @@ function mapSportType(sportType: string): string {
   return 'other';
 }
 
+function nameSimilarity(a: string, b: string): number {
+  const la = a.toLowerCase().trim();
+  const lb = b.toLowerCase().trim();
+  if (!la || !lb) return 0;
+  if (la === lb) return 1;
+  const aWords = la.split(/\s+/).filter(w => w.length > 2);
+  const bWords = lb.split(/\s+/).filter(w => w.length > 2);
+  let matches = 0;
+  for (const aw of aWords) {
+    if (bWords.some(bw => bw.includes(aw) || aw.includes(bw))) matches++;
+  }
+  return Math.min(1, matches / Math.max(aWords.length, bWords.length, 1));
+}
+
+function computeCompliance(
+  plannedDuration: number | null,
+  plannedImpulse: number | null,
+  actualDuration: number | null,
+  actualImpulse: number | null,
+  plannedName: string,
+  actualName: string
+): 'completed' | 'modified' | 'missed' {
+  if (actualDuration == null && actualImpulse == null) return 'completed';
+
+  const durRatio = plannedDuration && actualDuration
+    ? actualDuration / plannedDuration
+    : null;
+  const impulseRatio = plannedImpulse && actualImpulse
+    ? actualImpulse / plannedImpulse
+    : null;
+
+  const nameSim = nameSimilarity(plannedName, actualName);
+
+  const ratio = durRatio ?? impulseRatio ?? 1;
+
+  if (ratio >= 0.8 && ratio <= 1.2 && nameSim >= 0.5) return 'completed';
+  if (ratio >= 0.5 && ratio <= 1.5) return 'modified';
+  return 'missed';
+}
+
 async function syncCompletedWorkoutsFromHub(
   schedule: HubTrainingSchedule,
   localAthleteId: string
-): Promise<number> {
+): Promise<{ synced: number; updated: number }> {
   const completedFromHub = schedule.scheduled_workouts.filter(
-    sw => sw.workout_source === 'endurance' && sw.status === 'completed'
+    sw => sw.status === 'completed'
   );
-  if (completedFromHub.length === 0) return 0;
 
-  const dates = completedFromHub.map(sw => sw.scheduled_date);
+  const allScheduledDates = schedule.scheduled_workouts.map(sw => sw.scheduled_date);
+
+  if (allScheduledDates.length === 0) return { synced: 0, updated: 0 };
+
   const { data: localWorkouts } = await supabase
     .from('workouts')
-    .select('id, name, status, scheduled_date')
+    .select('id, name, status, scheduled_date, estimated_duration_minutes, estimated_impulse')
     .or(`coach_id.eq.${localAthleteId},athlete_id.eq.${localAthleteId}`)
-    .in('scheduled_date', dates)
-    .eq('status', 'planned');
+    .in('scheduled_date', allScheduledDates);
 
-  if (!localWorkouts || localWorkouts.length === 0) return 0;
+  if (!localWorkouts || localWorkouts.length === 0) return { synced: 0, updated: 0 };
 
-  const updates: Array<{ id: string; date: string; actualDuration: number | null; actualImpulse: number | null; rpe: number | null; notes: string | null }> = [];
+  const updates: Array<{
+    id: string;
+    date: string;
+    actualDuration: number | null;
+    actualImpulse: number | null;
+    rpe: number | null;
+    notes: string | null;
+    compliance: 'completed' | 'modified' | 'missed';
+    plannedName: string;
+    actualName: string;
+  }> = [];
 
   for (const sw of completedFromHub) {
     const hubName = (sw as any).name ?? sw.workout?.name ?? '';
-    const match = localWorkouts.find(lw => {
-      if (lw.scheduled_date !== sw.scheduled_date) return false;
-      if (!hubName || !lw.name) return lw.scheduled_date === sw.scheduled_date;
-      return lw.name.toLowerCase().includes(hubName.toLowerCase().slice(0, 15)) ||
-             hubName.toLowerCase().includes(lw.name.toLowerCase().slice(0, 15));
-    }) ?? localWorkouts.find(lw => lw.scheduled_date === sw.scheduled_date);
+    const hubDuration = (sw as any).actual_duration_minutes ?? sw.workout?.duration_minutes ?? null;
+    const hubImpulse = (sw as any).actual_impulse ?? null;
 
-    if (match) {
+    let bestMatch = null as null | typeof localWorkouts[0];
+    let bestScore = 0;
+
+    for (const lw of localWorkouts) {
+      if (lw.scheduled_date !== sw.scheduled_date) continue;
+      const sim = nameSimilarity(hubName, lw.name || '');
+      if (sim > bestScore) {
+        bestScore = sim;
+        bestMatch = lw;
+      }
+    }
+
+    if (!bestMatch && localWorkouts.length > 0) {
+      bestMatch = localWorkouts.find(lw => lw.scheduled_date === sw.scheduled_date) ?? null;
+    }
+
+    if (bestMatch) {
+      const compliance = computeCompliance(
+        bestMatch.estimated_duration_minutes ?? null,
+        bestMatch.estimated_impulse ?? null,
+        hubDuration,
+        hubImpulse,
+        bestMatch.name || '',
+        hubName
+      );
+
       updates.push({
-        id: match.id,
+        id: bestMatch.id,
         date: sw.scheduled_date,
-        actualDuration: (sw as any).actual_duration_minutes ?? null,
-        actualImpulse: (sw as any).actual_impulse ?? null,
+        actualDuration: hubDuration,
+        actualImpulse: hubImpulse,
         rpe: sw.rpe ?? null,
         notes: sw.athlete_notes ?? sw.coach_notes ?? null,
+        compliance,
+        plannedName: bestMatch.name || '',
+        actualName: hubName,
       });
     }
   }
 
-  let synced = 0;
+  const plannedDates = new Set(schedule.scheduled_workouts.filter(sw => sw.status === 'pending' || sw.status === 'planned').map(sw => sw.scheduled_date));
+  const missedWorkouts = localWorkouts.filter(lw =>
+    plannedDates.has(lw.scheduled_date) && lw.status === 'planned'
+  );
+
+  let syncedCount = 0;
   for (const u of updates) {
     const updatePayload: Record<string, unknown> = {
       status: 'completed',
       completed_at: u.date + 'T00:00:00Z',
+      compliance_status: u.compliance,
     };
     if (u.actualDuration != null) updatePayload.actual_duration_minutes = u.actualDuration;
     if (u.actualImpulse != null) updatePayload.actual_impulse = u.actualImpulse;
@@ -78,10 +159,20 @@ async function syncCompletedWorkoutsFromHub(
       .update(updatePayload)
       .eq('id', u.id);
 
-    if (!error) synced++;
+    if (!error) syncedCount++;
   }
 
-  return synced;
+  let missedCount = 0;
+  for (const lw of missedWorkouts) {
+    const { error } = await supabase
+      .from('workouts')
+      .update({ compliance_status: 'missed' })
+      .eq('id', lw.id);
+
+    if (!error) missedCount++;
+  }
+
+  return { synced: syncedCount, updated: missedCount };
 }
 
 async function syncExternalActivities(
@@ -91,7 +182,6 @@ async function syncExternalActivities(
   if (activities.length === 0) return 0;
 
   const activityDates = activities.map(a => a.local_date);
-  const activityNames = activities.map(a => a.name);
 
   const { data: existing } = await supabase
     .from('training_sessions')
@@ -180,12 +270,12 @@ export function useHubSchedule(): UseHubScheduleResult {
 
       setSchedule(scheduleData);
 
-      const [synced, activitiesSynced] = await Promise.all([
+      const [syncResult, activitiesSynced] = await Promise.all([
         syncCompletedWorkoutsFromHub(scheduleData, localAthleteId),
         syncExternalActivities(activitiesData, localAthleteId),
       ]);
 
-      setSyncedCount(synced);
+      setSyncedCount(syncResult.synced);
       setActivitiesCount(activitiesSynced);
 
       return scheduleData;
