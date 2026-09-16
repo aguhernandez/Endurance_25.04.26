@@ -908,6 +908,8 @@ export default function SessionsCalendarView({
                         const daySess = getSessionsByDate(dateForDay);
                         const dayWkts = getWorkoutsByDate(dateForDay);
                         const dayHubActs = getUnplannedHubActivitiesByDate(dateForDay);
+                        const isToday = isSameDay(dateForDay, new Date());
+                        const isDragTarget = dragOverDate === dateStr;
                         const hasContent = dayWkts.length > 0 || daySess.length > 0 || dayHubActs.length > 0;
 
                         return (
