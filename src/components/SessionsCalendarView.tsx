@@ -12,6 +12,7 @@ import { getDifficultyClasses, getDifficultyLabel, SSRResult } from '../lib/sess
 import { WeeklySummaryData } from '../lib/weeklySummary';
 import { WorkoutDetailModal } from './detail/WorkoutDetailModal';
 import { WorkoutData } from '../types/workoutDetail';
+import { hubGetTrainingLogs, hubCompletedLogToWorkoutData, HubCompletedLog } from '../lib/hubApi';
 
 interface SessionsCalendarViewProps {
   sessions: TrainingSession[];
@@ -249,9 +250,40 @@ export default function SessionsCalendarView({
   const [detailWorkout, setDetailWorkout] = useState<WorkoutData | null>(null);
   const [detailWorkoutSource, setDetailWorkoutSource] = useState<Workout | null>(null);
   const [detailSteps, setDetailSteps] = useState<WorkoutStep[]>([]);
+  const [detailActivityOnly, setDetailActivityOnly] = useState(false);
+  const [detailActivitySource, setDetailActivitySource] = useState<string | undefined>(undefined);
+  const [hubActivities, setHubActivities] = useState<HubCompletedLog[]>([]);
+
+  const handleViewHubActivity = useCallback((log: HubCompletedLog) => {
+    setDetailActivityOnly(true);
+    setDetailActivitySource(log.external_source || 'Hub');
+    setDetailWorkoutSource(null);
+    setDetailSteps([]);
+    setDetailWorkout(hubCompletedLogToWorkoutData(log));
+  }, []);
+
+  const renderHubActivityPill = (log: HubCompletedLog, compact = false) => {
+    const sport = log.workout_type || 'other';
+    const colors = getSportColor(sport);
+    const name = log.workout_name || sport;
+    const dur = log.duration_minutes ? `${log.duration_minutes}m` : '';
+    return (
+      <div
+        key={`hub-${log.id}`}
+        onClick={(e) => { e.stopPropagation(); handleViewHubActivity(log); }}
+        className={`cursor-pointer select-none ${compact ? 'text-[10px] px-1.5 py-1' : 'text-xs p-1.5'} rounded-lg border ${colors.bg} ${colors.text} ${colors.border} transition hover:shadow-sm hover:brightness-95 flex items-center gap-1`}
+      >
+        <Activity size={10} className="flex-shrink-0 opacity-60" />
+        <span className="truncate font-semibold leading-tight">{name}</span>
+        {!compact && dur && <span className="opacity-60 flex-shrink-0">{dur}</span>}
+      </div>
+    );
+  };
 
   const handleViewDetail = useCallback(async (w: Workout) => {
     setDetailWorkoutSource(w);
+    setDetailActivityOnly(false);
+    setDetailActivitySource(undefined);
     setDetailSteps([]);
     try {
       const { data: stepRows } = await supabase
@@ -344,8 +376,24 @@ export default function SessionsCalendarView({
   useEffect(() => {
     if (athleteId || currentUserId) {
       loadWorkouts();
+      loadHubActivities();
     }
   }, [athleteId, currentUserId]);
+
+  const loadHubActivities = async () => {
+    const hubId = athleteId || currentUserId;
+    if (!hubId) return;
+    try {
+      const now = new Date();
+      const dateTo = toLocalDateStr(now);
+      const dateFrom = toLocalDateStr(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+      const logs = await hubGetTrainingLogs(hubId, dateFrom, dateTo);
+      setHubActivities(logs);
+    } catch (err) {
+      console.error('Error loading Hub activities:', err);
+      setHubActivities([]);
+    }
+  };
 
   const loadWorkouts = async () => {
     const filterAthleteId = athleteId;
@@ -421,6 +469,16 @@ export default function SessionsCalendarView({
   const getWorkoutsByDate = (date: Date): Workout[] => {
     const dateStr = toLocalDateStr(date);
     return workouts.filter(w => w.scheduled_date === dateStr);
+  };
+
+  const getUnplannedHubActivitiesByDate = (date: Date): HubCompletedLog[] => {
+    const dateStr = toLocalDateStr(date);
+    const plannedDates = new Set(workouts.map(w => w.scheduled_date));
+    return hubActivities.filter(log => {
+      if (log.training_date !== dateStr) return false;
+      if (plannedDates.has(log.training_date)) return false;
+      return true;
+    });
   };
 
   const toLocalDateStr = (date: Date): string => {
@@ -849,9 +907,8 @@ export default function SessionsCalendarView({
                         const dateStr = toLocalDateStr(dateForDay);
                         const daySess = getSessionsByDate(dateForDay);
                         const dayWkts = getWorkoutsByDate(dateForDay);
-                        const isToday = isSameDay(dateForDay, new Date());
-                        const isDragTarget = dragOverDate === dateStr;
-                        const hasContent = dayWkts.length > 0 || daySess.length > 0;
+                        const dayHubActs = getUnplannedHubActivitiesByDate(dateForDay);
+                        const hasContent = dayWkts.length > 0 || daySess.length > 0 || dayHubActs.length > 0;
 
                         return (
                           <div
@@ -895,9 +952,10 @@ export default function SessionsCalendarView({
                                 </div>
                               ))}
                               {dayWkts.slice(0, 2).map(workout => renderWorkoutPill(workout, true))}
-                              {(daySess.length + dayWkts.length) > 3 && (
+                              {dayHubActs.slice(0, 1).map(log => renderHubActivityPill(log, true))}
+                              {(daySess.length + dayWkts.length + dayHubActs.length) > 3 && (
                                 <p className="text-[9px] text-gray-400 dark:text-gray-500 px-0.5">
-                                  +{daySess.length + dayWkts.length - 3} more
+                                  +{daySess.length + dayWkts.length + dayHubActs.length - 3} more
                                 </p>
                               )}
                             </div>
@@ -1007,6 +1065,7 @@ export default function SessionsCalendarView({
                 const dateStr = toLocalDateStr(date);
                 const daySess = getSessionsByDate(date);
                 const dayWkts = getWorkoutsByDate(date);
+                const dayHubActs = getUnplannedHubActivitiesByDate(date);
                 const isToday = isSameDay(date, new Date());
                 const isDragTarget = dragOverDate === dateStr;
 
@@ -1047,7 +1106,8 @@ export default function SessionsCalendarView({
                         </div>
                       ))}
                       {dayWkts.map(workout => renderWorkoutPill(workout))}
-                      {daySess.length === 0 && dayWkts.length === 0 && (
+                      {dayHubActs.map(log => renderHubActivityPill(log))}
+                      {daySess.length === 0 && dayWkts.length === 0 && dayHubActs.length === 0 && (
                         <button
                           onClick={e => { e.stopPropagation(); setSelectedDateForTraining(date); setShowTrainingModal(true); }}
                           className="w-full py-2 text-[10px] text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500 transition border border-dashed border-gray-200 dark:border-gray-700 rounded-lg"
@@ -1087,9 +1147,10 @@ export default function SessionsCalendarView({
               {(() => {
                 const daySess = getSessionsByDate(currentDate);
                 const dayWkts = getWorkoutsByDate(currentDate);
+                const dayHubActs = getUnplannedHubActivitiesByDate(currentDate);
                 return (
                   <>
-                    {daySess.length === 0 && dayWkts.length === 0 ? (
+                    {daySess.length === 0 && dayWkts.length === 0 && dayHubActs.length === 0 ? (
                       <p className="text-center text-gray-400 dark:text-gray-500 py-12 text-sm">No sessions scheduled</p>
                     ) : (
                       <div className="space-y-3">
@@ -1217,6 +1278,38 @@ export default function SessionsCalendarView({
                           </div>
                           );
                         })}
+                        {dayHubActs.map(log => {
+                          const sport = log.workout_type || 'other';
+                          const colors = getSportColor(sport);
+                          return (
+                            <div key={`hub-day-${log.id}`} className={`border rounded-xl p-4 ${colors.border} ${colors.bg} cursor-pointer hover:shadow-md transition`}
+                              onClick={() => handleViewHubActivity(log)}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Activity size={16} className={colors.text} />
+                                    <h4 className={`font-semibold ${colors.text}`}>{log.workout_name || sport}</h4>
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                      Sin planificación
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 capitalize">
+                                    {sport} · {log.duration_minutes || 0} min
+                                    {log.distance_km ? ` · ${log.distance_km.toFixed(1)} km` : ''}
+                                    {log.external_source ? ` · ${log.external_source}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                                {log.avg_heart_rate && <span className="flex items-center gap-1"><Activity size={12} /> {Math.round(log.avg_heart_rate)} bpm</span>}
+                                {log.avg_power_watts && <span className="flex items-center gap-1"><Zap size={12} /> {Math.round(log.avg_power_watts)}W</span>}
+                                {log.tss && <span>TSS: {Math.round(log.tss)}</span>}
+                                {log.rpe && <span>RPE: {log.rpe}/10</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </>
@@ -1288,17 +1381,19 @@ export default function SessionsCalendarView({
       {detailWorkout && (
         <WorkoutDetailModal
           isOpen={true}
-          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); setDetailSteps([]); }}
+          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); setDetailSteps([]); setDetailActivityOnly(false); setDetailActivitySource(undefined); }}
           workoutData={detailWorkout}
           userRole={isCoach ? 'coach' : 'athlete'}
           isCompleted={detailWorkoutSource?.compliance_status === 'completed'}
+          isActivityOnly={detailActivityOnly}
+          activitySource={detailActivitySource}
           steps={detailSteps}
           sport={detailWorkoutSource?.sport || 'cycling'}
           ftp={ftp}
-          onEdit={handleEditFromDetail}
-          onDuplicate={handleDuplicateFromDetail}
-          onCopy={handleCopyFromDetail}
-          onDelete={handleDeleteFromDetail}
+          onEdit={detailActivityOnly ? undefined : handleEditFromDetail}
+          onDuplicate={detailActivityOnly ? undefined : handleDuplicateFromDetail}
+          onCopy={detailActivityOnly ? undefined : handleCopyFromDetail}
+          onDelete={detailActivityOnly ? undefined : handleDeleteFromDetail}
         />
       )}
     </div>

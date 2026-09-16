@@ -16,9 +16,11 @@ interface WorkoutDetailModalProps {
   workoutData: WorkoutData;
   userRole: 'coach' | 'athlete';
   isCompleted?: boolean;
+  isActivityOnly?: boolean;
   steps?: WorkoutStep[];
   sport?: string;
   ftp?: number | null;
+  activitySource?: string;
   onEdit?: () => void;
   onDuplicate?: () => void;
   onCopy?: () => void;
@@ -200,26 +202,28 @@ export function WorkoutDetailModal({
   workoutData: data,
   userRole,
   isCompleted = false,
+  isActivityOnly = false,
   steps = [],
   sport = 'cycling',
   ftp = null,
+  activitySource,
   onEdit,
   onDuplicate,
   onCopy,
   onDelete,
 }: WorkoutDetailModalProps) {
   const { t } = useLanguage();
-  const [view, setView] = useState<View>('plan');
+  const [view, setView] = useState<View>(isActivityOnly ? 'activity' : 'plan');
   const [activeTab, setActiveTab] = useState<TabId>('resumen');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setView('plan');
+      setView(isActivityOnly ? 'activity' : 'plan');
       setActiveTab('resumen');
       setShowDeleteConfirm(false);
     }
-  }, [isOpen]);
+  }, [isOpen, isActivityOnly]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -294,7 +298,7 @@ export function WorkoutDetailModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {view === 'activity' && (
+            {view === 'activity' && !isActivityOnly && (
               <button onClick={() => setView('plan')}
                 className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex-shrink-0">
                 <ArrowLeft size={18} />
@@ -309,7 +313,7 @@ export function WorkoutDetailModal({
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {data.date || data.scheduled_date || '—'} · {sport} · {userRole === 'coach' ? 'Vista Coach' : 'Vista Atleta'}
-                {view === 'activity' && ' · Actividad realizada'}
+                {view === 'activity' && (isActivityOnly ? ` · Actividad${activitySource ? ` (${activitySource})` : ''}` : ' · Actividad realizada')}
               </p>
             </div>
           </div>
@@ -320,8 +324,8 @@ export function WorkoutDetailModal({
           </button>
         </div>
 
-        {/* View toggle (only if completed) */}
-        {isCompleted && (
+        {/* View toggle (only if completed and not activity-only) */}
+        {isCompleted && !isActivityOnly && (
           <div className="flex items-center gap-1 px-6 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0">
             <button onClick={() => setView('plan')}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition ${
@@ -337,11 +341,17 @@ export function WorkoutDetailModal({
             </button>
           </div>
         )}
+        {isActivityOnly && (
+          <div className="flex items-center gap-2 px-6 py-2 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20 flex-shrink-0">
+            <Activity size={14} className="text-blue-500" />
+            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Actividad sin planificación previa</span>
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {/* PLAN VIEW */}
-          {view === 'plan' && (
+          {view === 'plan' && !isActivityOnly && (
             <div className="space-y-6">
               <WorkoutPreview
                 steps={steps}

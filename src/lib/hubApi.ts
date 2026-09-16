@@ -683,3 +683,78 @@ export async function collectAndPushAthleteTags(
     return null;
   }
 }
+
+export function hubCompletedLogToWorkoutData(log: HubCompletedLog): import('../types/workoutDetail').WorkoutData {
+  const gpsTrack = (log.gps_track || []).map(p => ({
+    lat: p.lat,
+    lng: p.lng,
+    altitude_m: p.altitude_m ?? null,
+    timestamp: p.timestamp ?? null,
+    speed_kmh: p.speed_kmh ?? null,
+    heart_rate: p.heart_rate ?? null,
+    power_watts: p.power_watts ?? null,
+    cadence: p.cadence ?? null,
+    distance_m: p.distance_m ?? null,
+  }));
+
+  const gpsHr = gpsTrack.map(p => p.heart_rate).filter((v): v is number => v != null && v > 0);
+  const gpsWatts = gpsTrack.map(p => p.power_watts).filter((v): v is number => v != null && v > 0);
+  const gpsCadence = gpsTrack.map(p => p.cadence).filter((v): v is number => v != null && v > 0);
+  const gpsElevation = gpsTrack.map(p => p.altitude_m).filter((v): v is number => v != null);
+
+  return {
+    id: log.id,
+    name: log.workout_name || log.workout_type || 'Actividad',
+    date: log.training_date,
+    sport: log.workout_type || undefined,
+    distance: log.distance_km ?? null,
+    distance_km: log.distance_km ?? null,
+    duration: log.duration_minutes ? log.duration_minutes * 60 : null,
+    duration_seconds: log.duration_minutes ? log.duration_minutes * 60 : null,
+    actual_duration_minutes: log.duration_minutes ?? null,
+    actual_distance_km: log.distance_km ?? null,
+    actual_avg_hr: log.avg_heart_rate ?? null,
+    actual_max_hr: log.max_heart_rate ?? null,
+    actual_avg_power_watts: log.avg_power_watts ?? null,
+    actual_max_power_watts: log.max_power_watts ?? null,
+    actual_avg_cadence: log.avg_cadence ?? null,
+    actual_avg_speed_kmh: log.avg_speed_kmh ?? null,
+    actual_elevation_gain_m: log.elevation_gain_m ?? null,
+    actual_calories: log.calories ?? null,
+    actual_tss: log.tss ?? null,
+    actual_impulse: log.session_impulse ?? null,
+    rpe: log.rpe ?? null,
+    compliance_percent: log.compliance_percent ?? null,
+    athlete_notes: log.athlete_notes ?? log.notes ?? null,
+    athlete_feedback: log.athlete_feedback ?? null,
+    athlete_feeling: log.athlete_feeling ?? null,
+    gps_track: gpsTrack.length > 0 ? gpsTrack : null,
+    map: gpsTrack.length > 0 ? gpsTrack : null,
+    heart_rate: gpsHr.length > 0 ? gpsHr : null,
+    heartRate: gpsHr.length > 0 ? gpsHr : null,
+    watts: gpsWatts.length > 0 ? gpsWatts : null,
+    power_watts: gpsWatts.length > 0 ? gpsWatts : null,
+    cadence: gpsCadence.length > 0 ? gpsCadence : null,
+    cadence_rpm: gpsCadence.length > 0 ? gpsCadence : null,
+    elevation: gpsElevation.length > 0 ? gpsElevation : null,
+    elevation_m: gpsElevation.length > 0 ? gpsElevation : null,
+    zone_distribution: (log.zone_distribution || []).map(z => ({
+      zone: z.zone,
+      name: z.name,
+      color: z.color,
+      actual_percent: z.actual_percent ?? null,
+      actual_seconds: z.actual_seconds ?? null,
+      within_target: z.within_target ?? null,
+    })),
+    activity_log: (log.activity_log || []).map(a => ({
+      timestamp: a.timestamp,
+      type: a.type,
+      label: a.label,
+      value: a.value ?? null,
+      duration_s: a.duration_s ?? null,
+      avg_hr: a.avg_hr ?? null,
+      avg_power: a.avg_power ?? null,
+      avg_speed: a.avg_speed ?? null,
+    })),
+  };
+}
