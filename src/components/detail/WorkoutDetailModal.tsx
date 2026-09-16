@@ -1,14 +1,21 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Activity, Gauge, Heart, Zap, MapPin, TrendingUp, Mountain, Timer, Bike } from 'lucide-react';
-import { WorkoutData, GpsPoint } from '../../types/workoutDetail';
+import { X, Activity, Gauge, Heart, Zap, MapPin, TrendingUp, Mountain, Timer, Bike, Edit2, CopyCheck, Copy, Trash2, ExternalLink } from 'lucide-react';
+import { WorkoutData, GpsPoint } from '../../types/workout';
 import { BarChart, LineChart } from './Charts';
 import { RouteMap } from './RouteMap';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface WorkoutDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   workoutData: WorkoutData;
   userRole: 'coach' | 'athlete';
+  isCompleted?: boolean;
+  onEdit?: () => void;
+  onDuplicate?: () => void;
+  onCopy?: () => void;
+  onDelete?: () => void;
+  onViewActivity?: () => void;
 }
 
 type TabId = 'resumen' | 'mapa' | 'pace' | 'watts' | 'pulso' | 'cadencia';
@@ -143,14 +150,30 @@ function ZoneBar({ zones }: { zones: { zone: number; name: string; actual_percen
   );
 }
 
-export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRole }: WorkoutDetailModalProps) {
+export function WorkoutDetailModal({
+  isOpen,
+  onClose,
+  workoutData: data,
+  userRole,
+  isCompleted = false,
+  onEdit,
+  onDuplicate,
+  onCopy,
+  onDelete,
+  onViewActivity,
+}: WorkoutDetailModalProps) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabId>('resumen');
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (showDeleteConfirm) setShowDeleteConfirm(false);
+        else onClose();
+      }
     };
     document.addEventListener('keydown', handler);
     document.body.style.overflow = 'hidden';
@@ -158,7 +181,7 @@ export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRol
       document.removeEventListener('keydown', handler);
       document.body.style.overflow = '';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, showDeleteConfirm]);
 
   const gpsPoints = useMemo(() => getGpsPoints(data), [data]);
   const paceData = useMemo(() => getPaceArray(data), [data]);
@@ -201,8 +224,11 @@ export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRol
   const rpe = data.rpe ?? null;
 
   const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose();
-  }, [onClose]);
+    if (e.target === e.currentTarget) {
+      if (showDeleteConfirm) setShowDeleteConfirm(false);
+      else onClose();
+    }
+  }, [onClose, showDeleteConfirm]);
 
   if (!isOpen) return null;
 
@@ -214,6 +240,8 @@ export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRol
     pulso: Heart,
     cadencia: TrendingUp,
   };
+
+  const hasActions = onEdit || onDuplicate || onCopy || onDelete || (isCompleted && onViewActivity);
 
   return (
     <div
@@ -244,7 +272,7 @@ export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRol
           <button
             onClick={onClose}
             className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex-shrink-0"
-            aria-label="Cerrar"
+            aria-label={t('workout.cancel')}
           >
             <X size={20} />
           </button>
@@ -286,7 +314,7 @@ export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRol
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <KpiCard icon={MapPin} label="Distancia" value={`${distance.toFixed(1)} km`} color="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" />
                     <KpiCard icon={Timer} label="Duración" value={formatDuration(durationSec)} color="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" />
-                    {avgPace != null && <KpiCard icon={Gauge} label="Pace medio" value={formatPace(avgPace)} unit="/km" color="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" />}
+                    {avgPace != null && <KpiCard icon={Gauge} label="Pace medio" value={formatPace(avgPace)} sub="/km" color="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" />}
                     {avgWatts != null && <KpiCard icon={Zap} label="Watts avg" value={`${Math.round(avgWatts)} W`} color="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" />}
                     {maxWatts != null && <KpiCard icon={Zap} label="Watts max" value={`${Math.round(maxWatts)} W`} color="bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" />}
                     {np != null && <KpiCard icon={Zap} label="Potencia norm." value={`${Math.round(np)} W`} color="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400" />}
@@ -397,9 +425,9 @@ export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRol
                   ) : (
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <KpiCard icon={Gauge} label="Pace medio" value={avgPace ? formatPace(avgPace) : '—'} unit="/km" color="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" />
-                        <KpiCard icon={Gauge} label="Mejor pace" value={formatPace(Math.min(...paceData))} unit="/km" color="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" />
-                        <KpiCard icon={Gauge} label="Peor pace" value={formatPace(Math.max(...paceData))} unit="/km" color="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400" />
+                        <KpiCard icon={Gauge} label="Pace medio" value={avgPace ? formatPace(avgPace) : '—'} sub="/km" color="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" />
+                        <KpiCard icon={Gauge} label="Mejor pace" value={formatPace(Math.min(...paceData))} sub="/km" color="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" />
+                        <KpiCard icon={Gauge} label="Peor pace" value={formatPace(Math.max(...paceData))} sub="/km" color="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400" />
                         <KpiCard icon={Activity} label="Segmentos" value={`${paceData.length}`} color="bg-gray-50 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400" />
                       </div>
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
@@ -554,6 +582,92 @@ export function WorkoutDetailModal({ isOpen, onClose, workoutData: data, userRol
             </>
           )}
         </div>
+
+        {/* Action Buttons Bar */}
+        {hasActions && (
+          <div className="flex items-center gap-2 px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0 overflow-x-auto">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition"
+              >
+                <Edit2 size={15} />
+                {t('workout.edit')}
+              </button>
+            )}
+            {onDuplicate && (
+              <button
+                onClick={onDuplicate}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition"
+              >
+                <CopyCheck size={15} />
+                {t('workout.duplicate')}
+              </button>
+            )}
+            {onCopy && (
+              <button
+                onClick={onCopy}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition"
+              >
+                <Copy size={15} />
+                {t('workout.copy')}
+              </button>
+            )}
+            {isCompleted && onViewActivity && (
+              <button
+                onClick={onViewActivity}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition"
+              >
+                <ExternalLink size={15} />
+                {t('workout.viewActivity')}
+              </button>
+            )}
+            <div className="flex-1" />
+            {onDelete && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition"
+              >
+                <Trash2 size={15} />
+                {t('workout.delete')}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Delete Confirmation Overlay */}
+        {showDeleteConfirm && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm rounded-2xl">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 w-full max-w-sm">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={22} className="text-red-500" />
+              </div>
+              <h3 className="text-center font-bold text-gray-900 dark:text-white mb-2">
+                {t('workout.deleteConfirmTitle')}
+              </h3>
+              <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-6">
+                {t('workout.deleteConfirmMessage')}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  {t('workout.cancel')}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    onDelete?.();
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition"
+                >
+                  {t('workout.delete')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

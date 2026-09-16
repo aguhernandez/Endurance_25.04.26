@@ -164,6 +164,16 @@ const translations: Record<Language, Record<string, string>> = {
     'login.submitting': 'Signing in...',
     'login.register': "Don't have an account?",
     'login.registerLink': 'Register on Hub',
+
+    'workout.edit': 'Edit',
+    'workout.duplicate': 'Duplicate',
+    'workout.copy': 'Copy',
+    'workout.delete': 'Delete',
+    'workout.viewActivity': 'View Activity',
+    'workout.cancel': 'Cancel',
+    'workout.deleteConfirmTitle': 'Delete workout?',
+    'workout.deleteConfirmMessage': 'Are you sure you want to delete this workout?',
+    'workout.completed': 'Completed',
   },
   es: {
     'programs.title': 'Plantillas de Programas',
@@ -318,6 +328,16 @@ const translations: Record<Language, Record<string, string>> = {
     'login.submitting': 'Iniciando sesión...',
     'login.register': '¿No tienes cuenta?',
     'login.registerLink': 'Regístrate en Hub',
+
+    'workout.edit': 'Editar',
+    'workout.duplicate': 'Duplicar',
+    'workout.copy': 'Copiar',
+    'workout.delete': 'Eliminar',
+    'workout.viewActivity': 'Ver Actividad',
+    'workout.cancel': 'Cancelar',
+    'workout.deleteConfirmTitle': '¿Eliminar entrenamiento?',
+    'workout.deleteConfirmMessage': '¿Estás seguro de que deseas eliminar este entrenamiento?',
+    'workout.completed': 'Completado',
   },
 };
 

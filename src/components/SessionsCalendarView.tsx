@@ -247,8 +247,10 @@ export default function SessionsCalendarView({
   const [deleteConfirm, setDeleteConfirm] = useState<Workout | null>(null);
   const [drawerWeek, setDrawerWeek] = useState<WeeklySummaryData | null>(null);
   const [detailWorkout, setDetailWorkout] = useState<WorkoutData | null>(null);
+  const [detailWorkoutSource, setDetailWorkoutSource] = useState<Workout | null>(null);
 
   const handleViewDetail = useCallback((w: Workout) => {
+    setDetailWorkoutSource(w);
     const hubData = (w.hub_data ?? null) as Record<string, unknown> | null;
     const data: WorkoutData = {
       id: w.id,
@@ -297,6 +299,35 @@ export default function SessionsCalendarView({
     };
     setDetailWorkout(data);
   }, []);
+
+  const handleEditFromDetail = useCallback(() => {
+    if (detailWorkoutSource) {
+      setDetailWorkout(null);
+      onEditWorkout?.(detailWorkoutSource);
+    }
+  }, [detailWorkoutSource, onEditWorkout]);
+
+  const handleDuplicateFromDetail = useCallback(() => {
+    if (detailWorkoutSource) {
+      setDetailWorkout(null);
+      handleDuplicateWorkout(detailWorkoutSource);
+    }
+  }, [detailWorkoutSource]);
+
+  const handleCopyFromDetail = useCallback(() => {
+    if (detailWorkoutSource) {
+      handleCopyWorkout(detailWorkoutSource);
+    }
+  }, [detailWorkoutSource]);
+
+  const handleDeleteFromDetail = useCallback(() => {
+    if (detailWorkoutSource) {
+      const w = detailWorkoutSource;
+      setDetailWorkout(null);
+      setDetailWorkoutSource(null);
+      handleDeleteWorkout(w);
+    }
+  }, [detailWorkoutSource]);
 
   useEffect(() => {
     if (athleteId || currentUserId) {
@@ -1245,9 +1276,18 @@ export default function SessionsCalendarView({
       {detailWorkout && (
         <WorkoutDetailModal
           isOpen={true}
-          onClose={() => setDetailWorkout(null)}
+          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); }}
           workoutData={detailWorkout}
           userRole={isCoach ? 'coach' : 'athlete'}
+          isCompleted={detailWorkoutSource?.compliance_status === 'completed'}
+          onEdit={handleEditFromDetail}
+          onDuplicate={handleDuplicateFromDetail}
+          onCopy={handleCopyFromDetail}
+          onDelete={handleDeleteFromDetail}
+          onViewActivity={detailWorkoutSource?.compliance_status === 'completed' ? () => {
+            setDetailWorkout(null);
+            setDetailWorkoutSource(null);
+          } : undefined}
         />
       )}
     </div>
