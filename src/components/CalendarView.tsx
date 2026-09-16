@@ -69,12 +69,12 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   };
 
   const handlePullActivity = async (isAuto = false) => {
-    const targets = isCoach
-      ? athletes.filter(athlete => athlete.hub_user_id)
+    const target = isCoach
+      ? selectedAthlete
       : activeHubId && activeAthleteId
-        ? [{ id: activeAthleteId, hub_user_id: activeHubId } as Profile]
-        : [];
-    if (targets.length === 0) return;
+        ? { id: activeAthleteId, hub_user_id: activeHubId } as Profile
+        : null;
+    if (!target || !target.hub_user_id) return;
     if (!isAuto) setSyncBanner(null);
 
     const today = new Date();
@@ -87,26 +87,25 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
     let pending = 0;
     let failed = 0;
 
-    for (const target of targets) {
-      try {
-        const result = await fetchSchedule(target.hub_user_id!, target.id, fromStr, toStr);
-        if (!result) {
-          failed++;
-          continue;
-        }
-        planned += result.scheduled_workouts.length;
-        done += result.scheduled_workouts.filter(w => w.status === 'completed').length;
-        pending += result.scheduled_workouts.filter(w => w.status === 'pending').length;
-      } catch (error) {
+    try {
+      const result = await fetchSchedule(target.hub_user_id!, target.id, fromStr, toStr);
+      if (!result) {
         failed++;
-        console.error(`[HubPull] Failed for athlete ${target.id}:`, error);
+      } else {
+        const workouts = result.scheduled_workouts || [];
+        planned += workouts.length;
+        done += workouts.filter(w => w.status === 'completed').length;
+        pending += workouts.filter(w => w.status === 'pending').length;
       }
+    } catch (error) {
+      failed++;
+      console.error(`[HubPull] Failed for athlete ${target.id}:`, error);
     }
 
     if (!isAuto) {
       setSyncBanner({
         type: failed > 0 && done === 0 ? 'error' : 'success',
-        message: `Hub (90 dias, ${targets.length} atleta${targets.length !== 1 ? 's' : ''}): ${planned} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''}, ${pending} pendiente${pending !== 1 ? 's' : ''}${failed > 0 ? `, ${failed} con error` : ''}`,
+        message: `Hub (90 dias): ${planned} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''}, ${pending} pendiente${pending !== 1 ? 's' : ''}${failed > 0 ? ', con error' : ''}`,
       });
     }
     setWorkoutsVersion(v => v + 1);

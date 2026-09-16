@@ -494,7 +494,17 @@ export async function hubGetTrainingSchedule(
     `${BASE_URL}/endurance-satellite-bridge/training-schedule?${params}`,
     { headers: await plannerHeaders() }
   );
-  return handleResponse<HubTrainingSchedule>(res);
+  const json = await handleResponse<Record<string, unknown>>(res);
+  const workouts = (json.scheduled_workouts || json.schedule || json.data || []) as HubScheduledWorkout[];
+  const logs = (json.completed_training_logs || json.logs || []) as HubCompletedLog[];
+  const loads = (json.weekly_loads || []) as HubWeeklyLoad[];
+  return {
+    date_from: (json.date_from as string) || dateFrom,
+    date_to: (json.date_to as string) || dateTo,
+    scheduled_workouts: workouts,
+    completed_training_logs: logs,
+    weekly_loads: loads,
+  };
 }
 
 export interface HubExternalActivity {

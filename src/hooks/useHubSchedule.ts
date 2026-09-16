@@ -73,11 +73,12 @@ async function syncCompletedWorkoutsFromHub(
   schedule: HubTrainingSchedule,
   localAthleteId: string
 ): Promise<{ synced: number; updated: number; skipped: number }> {
-  const completedFromHub = schedule.scheduled_workouts.filter(
+  const allWorkouts = schedule.scheduled_workouts || [];
+  const completedFromHub = allWorkouts.filter(
     sw => sw.status === 'completed'
   );
 
-  const allScheduledDates = schedule.scheduled_workouts.map(sw => sw.scheduled_date);
+  const allScheduledDates = allWorkouts.map(sw => sw.scheduled_date);
 
   if (allScheduledDates.length === 0) return { synced: 0, updated: 0, skipped: 0 };
 
@@ -165,7 +166,7 @@ async function syncCompletedWorkoutsFromHub(
   }
 
   const plannedDates = new Set(
-    schedule.scheduled_workouts
+    allWorkouts
       .filter(sw => sw.status === 'pending' || sw.status === 'planned')
       .map(sw => sw.scheduled_date)
   );
