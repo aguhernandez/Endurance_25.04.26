@@ -507,6 +507,46 @@ export async function hubGetTrainingSchedule(
   };
 }
 
+export interface HubActivityGpsPoint {
+  lat: number;
+  lng: number;
+  altitude?: number | null;
+  speed?: number | null;
+  speed_kmh?: number | null;
+  distance?: number | null;
+  distance_m?: number | null;
+  time?: string | null;
+  timestamp?: string | null;
+  hr?: number | null;
+  heart_rate?: number | null;
+  power?: number | null;
+  power_watts?: number | null;
+  cadence?: number | null;
+}
+
+export interface HubActivitySplit {
+  index?: number;
+  label?: string;
+  distance_km?: number;
+  duration_seconds?: number;
+  avg_pace_sec_per_km?: number;
+  avg_power_watts?: number | null;
+  avg_heart_rate?: number | null;
+  avg_cadence?: number | null;
+  max_power_watts?: number | null;
+  max_heart_rate?: number | null;
+  elevation_gain_m?: number | null;
+}
+
+export interface HubActivityZoneDist {
+  zone: number;
+  name: string;
+  color?: string;
+  actual_percent?: number | null;
+  actual_seconds?: number | null;
+  within_target?: boolean | null;
+}
+
 export interface HubExternalActivity {
   id: string;
   user_id: string;
@@ -518,6 +558,26 @@ export interface HubExternalActivity {
   calories: number | null;
   start_time: string;
   local_date: string;
+  average_heartrate?: number | null;
+  max_heartrate?: number | null;
+  average_power?: number | null;
+  max_power?: number | null;
+  average_cadence?: number | null;
+  max_cadence?: number | null;
+  average_speed?: number | null;
+  max_speed?: number | null;
+  elevation_gain?: number | null;
+  elevation_loss?: number | null;
+  tss?: number | null;
+  rpe?: number | null;
+  notes?: string | null;
+  map_polyline?: string | null;
+  start_latlng?: [number, number] | null;
+  end_latlng?: [number, number] | null;
+  gps_track?: HubActivityGpsPoint[] | null;
+  zone_distribution?: HubActivityZoneDist[] | null;
+  activity_log?: HubActivityLog[] | null;
+  splits?: HubActivitySplit[] | null;
   raw_data?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -543,6 +603,104 @@ export async function hubGetExternalActivities(
   }
   const json = await res.json();
   return json.activities || json.data || [];
+}
+
+export function hubActivityToWorkoutData(act: HubExternalActivity): import('../types/workoutDetail').WorkoutData {
+  const rawGps = act.gps_track || [];
+  const gpsTrack = rawGps.map(p => ({
+    lat: p.lat,
+    lng: p.lng,
+    altitude_m: p.altitude ?? null,
+    timestamp: p.timestamp ?? p.time ?? null,
+    speed_kmh: p.speed_kmh ?? p.speed ?? null,
+    heart_rate: p.heart_rate ?? p.hr ?? null,
+    power_watts: p.power_watts ?? p.power ?? null,
+    cadence: p.cadence ?? null,
+    distance_m: p.distance_m ?? p.distance ?? null,
+  }));
+
+  const gpsHr = gpsTrack.map(p => p.heart_rate).filter((v): v is number => v != null && v > 0);
+  const gpsWatts = gpsTrack.map(p => p.power_watts).filter((v): v is number => v != null && v > 0);
+  const gpsCadence = gpsTrack.map(p => p.cadence).filter((v): v is number => v != null && v > 0);
+  const gpsElevation = gpsTrack.map(p => p.altitude_m).filter((v): v is number => v != null);
+
+  const splits = act.splits || [];
+  const paceArr = splits.map(s => s.avg_pace_sec_per_km ?? 0).filter(v => v > 0);
+  const wattsArr = splits.map(s => s.avg_power_watts ?? 0).filter(v => v != null && v > 0);
+  const hrArr = splits.map(s => s.avg_heart_rate ?? 0).filter(v => v != null && v > 0);
+  const cadenceArr = splits.map(s => s.avg_cadence ?? 0).filter(v => v != null && v > 0);
+
+  const distanceKm = act.distance_meters ? act.distance_meters / 1000 : null;
+  const durationSec = act.duration_seconds ?? null;
+  const avgPace = distanceKm && durationSec && distanceKm > 0 ? durationSec / distanceKm : null;
+
+  return {
+    id: act.id,
+    name: act.name || 'Actividad',
+    date: act.local_date,
+    sport: act.sport_type || undefined,
+    distance: distanceKm,
+    distance_km: distanceKm,
+    duration: durationSec,
+    duration_seconds: durationSec,
+    actual_duration_minutes: durationSec ? durationSec / 60 : null,
+    actual_distance_km: distanceKm,
+    actual_avg_hr: act.average_heartrate ?? null,
+    actual_max_hr: act.max_heartrate ?? null,
+    actual_avg_power_watts: act.average_power ?? null,
+    actual_max_power_watts: act.max_power ?? null,
+    actual_avg_cadence: act.average_cadence ?? null,
+    actual_avg_speed_kmh: act.average_speed ?? null,
+    actual_elevation_gain_m: act.elevation_gain ?? null,
+    actual_elevation_loss_m: act.elevation_loss ?? null,
+    actual_calories: act.calories ?? null,
+    actual_tss: act.tss ?? null,
+    rpe: act.rpe ?? null,
+    athlete_notes: act.notes ?? null,
+    gps_track: gpsTrack.length > 0 ? gpsTrack : null,
+    map: gpsTrack.length > 0 ? gpsTrack : null,
+    heart_rate: gpsHr.length > 0 ? gpsHr : (hrArr.length > 0 ? hrArr : null),
+    heartRate: gpsHr.length > 0 ? gpsHr : (hrArr.length > 0 ? hrArr : null),
+    watts: gpsWatts.length > 0 ? gpsWatts : (wattsArr.length > 0 ? wattsArr : null),
+    power_watts: gpsWatts.length > 0 ? gpsWatts : (wattsArr.length > 0 ? wattsArr : null),
+    cadence: gpsCadence.length > 0 ? gpsCadence : (cadenceArr.length > 0 ? cadenceArr : null),
+    cadence_rpm: gpsCadence.length > 0 ? gpsCadence : (cadenceArr.length > 0 ? cadenceArr : null),
+    elevation: gpsElevation.length > 0 ? gpsElevation : null,
+    elevation_m: gpsElevation.length > 0 ? gpsElevation : null,
+    pace: paceArr.length > 0 ? paceArr : (avgPace ? [avgPace] : null),
+    pace_sec_per_km: paceArr.length > 0 ? paceArr : null,
+    splits: splits.length > 0 ? splits.map((s, i) => ({
+      index: s.index ?? i + 1,
+      label: s.label,
+      distance_km: s.distance_km,
+      duration_seconds: s.duration_seconds,
+      avg_pace_sec_per_km: s.avg_pace_sec_per_km,
+      avg_power_watts: s.avg_power_watts,
+      avg_heart_rate: s.avg_heart_rate,
+      avg_cadence: s.avg_cadence,
+      max_power_watts: s.max_power_watts,
+      max_heart_rate: s.max_heart_rate,
+      elevation_gain_m: s.elevation_gain_m,
+    })) : null,
+    zone_distribution: (act.zone_distribution || []).map(z => ({
+      zone: z.zone,
+      name: z.name,
+      color: z.color,
+      actual_percent: z.actual_percent ?? null,
+      actual_seconds: z.actual_seconds ?? null,
+      within_target: z.within_target ?? null,
+    })),
+    activity_log: (act.activity_log || []).map(a => ({
+      timestamp: a.timestamp,
+      type: a.type,
+      label: a.label,
+      value: a.value ?? null,
+      duration_s: a.duration_s ?? null,
+      avg_hr: a.avg_hr ?? null,
+      avg_power: a.avg_power ?? null,
+      avg_speed: a.avg_speed ?? null,
+    })),
+  };
 }
 
 export async function hubPushEndurancePlan(
