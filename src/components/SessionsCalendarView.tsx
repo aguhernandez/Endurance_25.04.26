@@ -248,9 +248,21 @@ export default function SessionsCalendarView({
   const [drawerWeek, setDrawerWeek] = useState<WeeklySummaryData | null>(null);
   const [detailWorkout, setDetailWorkout] = useState<WorkoutData | null>(null);
   const [detailWorkoutSource, setDetailWorkoutSource] = useState<Workout | null>(null);
+  const [detailSteps, setDetailSteps] = useState<WorkoutStep[]>([]);
 
-  const handleViewDetail = useCallback((w: Workout) => {
+  const handleViewDetail = useCallback(async (w: Workout) => {
     setDetailWorkoutSource(w);
+    setDetailSteps([]);
+    try {
+      const { data: stepRows } = await supabase
+        .from('workout_steps')
+        .select('*')
+        .eq('workout_id', w.id)
+        .order('order');
+      if (stepRows) setDetailSteps(stepRows);
+    } catch (err) {
+      console.error('Error loading steps for detail:', err);
+    }
     const hubData = (w.hub_data ?? null) as Record<string, unknown> | null;
     const data: WorkoutData = {
       id: w.id,
@@ -1276,18 +1288,17 @@ export default function SessionsCalendarView({
       {detailWorkout && (
         <WorkoutDetailModal
           isOpen={true}
-          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); }}
+          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); setDetailSteps([]); }}
           workoutData={detailWorkout}
           userRole={isCoach ? 'coach' : 'athlete'}
           isCompleted={detailWorkoutSource?.compliance_status === 'completed'}
+          steps={detailSteps}
+          sport={detailWorkoutSource?.sport || 'cycling'}
+          ftp={ftp}
           onEdit={handleEditFromDetail}
           onDuplicate={handleDuplicateFromDetail}
           onCopy={handleCopyFromDetail}
           onDelete={handleDeleteFromDetail}
-          onViewActivity={detailWorkoutSource?.compliance_status === 'completed' ? () => {
-            setDetailWorkout(null);
-            setDetailWorkoutSource(null);
-          } : undefined}
         />
       )}
     </div>

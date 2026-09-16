@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Activity, Gauge, Heart, Zap, MapPin, TrendingUp, Mountain, Timer, Bike, Edit2, CopyCheck, Copy, Trash2, ExternalLink } from 'lucide-react';
+import {
+  X, Activity, Gauge, Heart, Zap, MapPin, TrendingUp, Mountain, Timer, Bike,
+  Edit2, CopyCheck, Copy, Trash2, ExternalLink, ArrowLeft, ClipboardList,
+} from 'lucide-react';
 import { WorkoutData, GpsPoint } from '../../types/workout';
+import { WorkoutStep } from '../../types/workout';
 import { BarChart, LineChart } from './Charts';
 import { RouteMap } from './RouteMap';
+import WorkoutPreview from '../WorkoutPreview';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 interface WorkoutDetailModalProps {
@@ -11,13 +16,16 @@ interface WorkoutDetailModalProps {
   workoutData: WorkoutData;
   userRole: 'coach' | 'athlete';
   isCompleted?: boolean;
+  steps?: WorkoutStep[];
+  sport?: string;
+  ftp?: number | null;
   onEdit?: () => void;
   onDuplicate?: () => void;
   onCopy?: () => void;
   onDelete?: () => void;
-  onViewActivity?: () => void;
 }
 
+type View = 'plan' | 'activity';
 type TabId = 'resumen' | 'mapa' | 'pace' | 'watts' | 'pulso' | 'cadencia';
 
 const TAB_CONFIG: { id: TabId; label: string; icon: typeof Activity }[] = [
@@ -51,9 +59,7 @@ function getPaceArray(data: WorkoutData): number[] {
   if (data.pace && data.pace.length) return data.pace;
   if (data.pace_sec_per_km && data.pace_sec_per_km.length) return data.pace_sec_per_km;
   const splits = data.splits;
-  if (splits && splits.length) {
-    return splits.map((s) => s.avg_pace_sec_per_km ?? 0).filter((v) => v > 0);
-  }
+  if (splits && splits.length) return splits.map((s) => s.avg_pace_sec_per_km ?? 0).filter((v) => v > 0);
   return [];
 }
 
@@ -81,15 +87,6 @@ function getCadenceArray(data: WorkoutData): number[] {
   return [];
 }
 
-function getElevationArray(data: WorkoutData): number[] {
-  if (data.elevation && data.elevation.length) return data.elevation;
-  if (data.elevation_m && data.elevation_m.length) return data.elevation_m;
-  if (data.altitude && data.altitude.length) return data.altitude;
-  const gps = getGpsPoints(data);
-  if (gps.length) return gps.map((p) => p.altitude_m ?? 0).filter((v) => v != null);
-  return [];
-}
-
 function KpiCard({ icon: Icon, label, value, sub, color }: { icon: typeof Activity; label: string; value: string; sub?: string; color: string }) {
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 flex items-center gap-3">
@@ -98,7 +95,7 @@ function KpiCard({ icon: Icon, label, value, sub, color }: { icon: typeof Activi
       </div>
       <div className="min-w-0">
         <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium truncate">{label}</p>
-        <p className="text-lg font-bold text-gray-900 dark:text-white font-body leading-tight">{value}</p>
+        <p className="text-lg font-bold text-gray-900 dark:text-white leading-tight">{value}</p>
         {sub && <p className="text-xs text-gray-400 dark:text-gray-500">{sub}</p>}
       </div>
     </div>
@@ -128,9 +125,7 @@ function ZoneBar({ zones }: { zones: { zone: number; name: string; actual_percen
           if (pct === 0) return null;
           const colors = ['#3b82f6', '#06b6d4', '#10b981', '#eab308', '#f97316', '#ef4444', '#8b5cf6'];
           return (
-            <div
-              key={i}
-              className="flex items-center justify-center text-xs font-bold text-white transition-all"
+            <div key={i} className="flex items-center justify-center text-xs font-bold text-white transition-all"
               style={{ width: `${pct}%`, backgroundColor: z.color || colors[z.zone - 1] || '#6366f1' }}
               title={`${z.name}: ${(z.actual_percent ?? 0).toFixed(0)}%`}
             >
@@ -150,22 +145,81 @@ function ZoneBar({ zones }: { zones: { zone: number; name: string; actual_percen
   );
 }
 
+function StepList({ steps }: { steps: WorkoutStep[] }) {
+  if (!steps || steps.length === 0) return null;
+  const STEP_META: Record<string, { color: string; bg: string; border: string; label: string }> = {
+    warmup:   { color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   label: 'Warm Up' },
+    steady:   { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Steady' },
+    interval: { color: 'text-red-700',     bg: 'bg-red-50',     border: 'border-red-200',     label: 'Interval' },
+    recovery: { color: 'text-cyan-700',    bg: 'bg-cyan-50',    border: 'border-cyan-200',    label: 'Recovery' },
+    cooldown: { color: 'text-indigo-700',  bg: 'bg-indigo-50',  border: 'border-indigo-200',  label: 'Cool Down' },
+  };
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+        <ClipboardList size={15} /> Pasos del entrenamiento
+      </h4>
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
+        {steps.map((s, i) => {
+          const meta = STEP_META[s.step_type] || STEP_META.steady;
+          const dur = s.duration_type === 'time'
+            ? `${Math.floor(s.duration_value / 60)}:${String(s.duration_value % 60).padStart(2, '0')}`
+            : `${s.duration_value} m`;
+          const target = s.target_percent_ftp
+            ? `${s.target_percent_ftp}% FTP`
+            : s.target_zone
+            ? `Zona ${s.target_zone}`
+            : s.target_min_value && s.target_max_value
+            ? `${s.target_min_value}-${s.target_max_value}`
+            : '';
+          return (
+            <div key={s.id || i} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${meta.bg}`}>
+              <span className="text-xs font-mono text-gray-400 w-6">{i + 1}.</span>
+              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${meta.color} ${meta.border} border ${meta.bg}`}>
+                {meta.label}
+              </span>
+              <span className="text-gray-600 dark:text-gray-300 font-medium">{dur}</span>
+              {target && <span className="text-gray-500 dark:text-gray-400 text-xs">{target}</span>}
+              {s.repeat_times && s.repeat_times > 1 && (
+                <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">×{s.repeat_times}</span>
+              )}
+              {s.cadence_rpm && (
+                <span className="text-xs text-gray-400">{s.cadence_rpm} rpm</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function WorkoutDetailModal({
   isOpen,
   onClose,
   workoutData: data,
   userRole,
   isCompleted = false,
+  steps = [],
+  sport = 'cycling',
+  ftp = null,
   onEdit,
   onDuplicate,
   onCopy,
   onDelete,
-  onViewActivity,
 }: WorkoutDetailModalProps) {
   const { t } = useLanguage();
+  const [view, setView] = useState<View>('plan');
   const [activeTab, setActiveTab] = useState<TabId>('resumen');
-  const [loading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setView('plan');
+      setActiveTab('resumen');
+      setShowDeleteConfirm(false);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -188,7 +242,6 @@ export function WorkoutDetailModal({
   const hrData = useMemo(() => getHeartRateArray(data), [data]);
   const wattsData = useMemo(() => getWattsArray(data), [data]);
   const cadenceData = useMemo(() => getCadenceArray(data), [data]);
-  const elevationData = useMemo(() => getElevationArray(data), [data]);
 
   const availableTabs = useMemo(() => {
     const tabs: TabId[] = ['resumen'];
@@ -201,9 +254,7 @@ export function WorkoutDetailModal({
   }, [gpsPoints, paceData, wattsData, hrData, cadenceData]);
 
   useEffect(() => {
-    if (!availableTabs.includes(activeTab)) {
-      setActiveTab('resumen');
-    }
+    if (!availableTabs.includes(activeTab)) setActiveTab('resumen');
   }, [availableTabs, activeTab]);
 
   const distance = data.distance_km ?? data.distance ?? 0;
@@ -232,82 +283,124 @@ export function WorkoutDetailModal({
 
   if (!isOpen) return null;
 
-  const tabIcons: Record<TabId, typeof Activity> = {
-    resumen: Activity,
-    mapa: MapPin,
-    pace: Gauge,
-    watts: Zap,
-    pulso: Heart,
-    cadencia: TrendingUp,
-  };
-
-  const hasActions = onEdit || onDuplicate || onCopy || onDelete || (isCompleted && onViewActivity);
+  const hasActions = onEdit || onDuplicate || onCopy || onDelete;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-      onClick={handleBackdrop}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: '80vw', height: '80vh', maxWidth: 1400, maxHeight: 900 }}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={handleBackdrop} role="dialog" aria-modal="true">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden relative"
+        style={{ width: '80vw', height: '80vh', maxWidth: 1400, maxHeight: 900 }}>
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
+            {view === 'activity' && (
+              <button onClick={() => setView('plan')}
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex-shrink-0">
+                <ArrowLeft size={18} />
+              </button>
+            )}
             <div className="w-10 h-10 rounded-lg bg-[#514163] flex items-center justify-center flex-shrink-0">
               <Bike size={20} className="text-[#fdda36]" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate font-body">
-                {data.name || 'Entrenamiento completado'}
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate">
+                {data.name || 'Entrenamiento'}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {data.date || data.scheduled_date || '—'} · {data.sport || 'cycling'} · {userRole === 'coach' ? 'Vista Coach' : 'Vista Atleta'}
+                {data.date || data.scheduled_date || '—'} · {sport} · {userRole === 'coach' ? 'Vista Coach' : 'Vista Atleta'}
+                {view === 'activity' && ' · Actividad realizada'}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
+          <button onClick={onClose}
             className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition flex-shrink-0"
-            aria-label={t('workout.cancel')}
-          >
+            aria-label={t('workout.cancel')}>
             <X size={20} />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-1 px-6 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0 overflow-x-auto">
-          {TAB_CONFIG.filter((t) => availableTabs.includes(t.id)).map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  isActive
-                    ? 'bg-[#514163] text-white'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-              >
-                <Icon size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* View toggle (only if completed) */}
+        {isCompleted && (
+          <div className="flex items-center gap-1 px-6 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0">
+            <button onClick={() => setView('plan')}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                view === 'plan' ? 'bg-[#514163] text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}>
+              <ClipboardList size={14} /> Planificación
+            </button>
+            <button onClick={() => setView('activity')}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                view === 'activity' ? 'bg-[#514163] text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}>
+              <ExternalLink size={14} /> {t('workout.viewActivity')}
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="w-8 h-8 border-3 border-[#514163] border-t-transparent rounded-full animate-spin" />
+          {/* PLAN VIEW */}
+          {view === 'plan' && (
+            <div className="space-y-6">
+              <WorkoutPreview
+                steps={steps}
+                sport={sport}
+                physiology={ftp ? { ftp, zoneSystem: '5' } : undefined}
+              />
+              <StepList steps={steps} />
+
+              {(data.athlete_notes || data.athlete_feedback || data.athlete_feeling || data.coach_notes) && (
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 space-y-3">
+                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Notas y feedback</h4>
+                  {data.athlete_notes && (
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase font-medium">Notas del atleta</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">{data.athlete_notes}</p>
+                    </div>
+                  )}
+                  {data.athlete_feedback && (
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase font-medium">Feedback</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">{data.athlete_feedback}</p>
+                    </div>
+                  )}
+                  {data.athlete_feeling && (
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase font-medium">Sensación</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">{data.athlete_feeling}</p>
+                    </div>
+                  )}
+                  {data.coach_notes && userRole === 'coach' && (
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase font-medium">Notas del coach</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">{data.coach_notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
+          )}
+
+          {/* ACTIVITY VIEW */}
+          {view === 'activity' && (
             <>
+              {/* Tab Navigation */}
+              <div className="flex items-center gap-1 mb-4 overflow-x-auto">
+                {TAB_CONFIG.filter((tab) => availableTabs.includes(tab.id)).map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                        isActive ? 'bg-[#514163] text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                      }`}>
+                      <Icon size={15} /> {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* RESUMEN */}
               {activeTab === 'resumen' && (
                 <div className="space-y-6">
@@ -321,108 +414,43 @@ export function WorkoutDetailModal({
                     {avgHr != null && <KpiCard icon={Heart} label="Pulso avg" value={`${Math.round(avgHr)} bpm`} color="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400" />}
                     {maxHr != null && <KpiCard icon={Heart} label="Pulso max" value={`${Math.round(maxHr)} bpm`} color="bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400" />}
                     {avgCadence != null && <KpiCard icon={TrendingUp} label="Cadencia avg" value={`${Math.round(avgCadence)} rpm`} color="bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400" />}
-                    {maxCadence != null && <KpiCard icon={TrendingUp} label="Cadencia max" value={`${Math.round(maxCadence)} rpm`} color="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" />}
                     {elevGain != null && <KpiCard icon={Mountain} label="Desnivel +" value={`${Math.round(elevGain)} m`} color="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" />}
-                    {elevLoss != null && <KpiCard icon={Mountain} label="Desnivel -" value={`${Math.round(elevLoss)} m`} color="bg-lime-50 dark:bg-lime-900/30 text-lime-600 dark:text-lime-400" />}
                     {calories != null && <KpiCard icon={Activity} label="Calorías" value={`${Math.round(calories)} kcal`} color="bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" />}
                     {tss != null && <KpiCard icon={Activity} label="TSS" value={tss.toFixed(0)} color="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />}
                     {rpe != null && <KpiCard icon={Activity} label="RPE" value={`${rpe}/10`} color="bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400" />}
                   </div>
 
-                  {data.zone_distribution && data.zone_distribution.length > 0 && (
-                    <ZoneBar zones={data.zone_distribution} />
-                  )}
+                  {data.zone_distribution && data.zone_distribution.length > 0 && <ZoneBar zones={data.zone_distribution} />}
 
-                  {/* Bar charts comparing splits */}
                   {paceData.length > 0 && (
                     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
                       <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Pace por segmento</h4>
-                      <BarChart
-                        data={paceData}
-                        labels={data.splits?.map((_, i) => `${i + 1}`) || paceData.map((_, i) => `${i + 1}`)}
-                        color="#10b981"
-                        unit=" s/km"
-                        highlightBest
-                        highlightWorst
-                        averageLine
-                        formatValue={(v) => formatPace(v)}
-                        height={180}
-                      />
+                      <BarChart data={paceData} labels={data.splits?.map((_, i) => `${i + 1}`) || paceData.map((_, i) => `${i + 1}`)}
+                        color="#10b981" unit=" s/km" highlightBest highlightWorst averageLine formatValue={(v) => formatPace(v)} height={180} />
                     </div>
                   )}
                   {wattsData.length > 0 && (
                     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
                       <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Watts por segmento</h4>
-                      <BarChart
-                        data={wattsData}
-                        labels={data.splits?.map((_, i) => `${i + 1}`) || wattsData.map((_, i) => `${i + 1}`)}
-                        color="#f59e0b"
-                        unit=" W"
-                        averageLine
-                        formatValue={(v) => Math.round(v).toString()}
-                        height={180}
-                      />
+                      <BarChart data={wattsData} labels={data.splits?.map((_, i) => `${i + 1}`) || wattsData.map((_, i) => `${i + 1}`)}
+                        color="#f59e0b" unit=" W" averageLine formatValue={(v) => Math.round(v).toString()} height={180} />
                     </div>
                   )}
                   {hrData.length > 0 && (
                     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
                       <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Pulso por segmento</h4>
-                      <BarChart
-                        data={hrData}
-                        labels={data.splits?.map((_, i) => `${i + 1}`) || hrData.map((_, i) => `${i + 1}`)}
-                        color="#ef4444"
-                        unit=" bpm"
-                        averageLine
-                        formatValue={(v) => Math.round(v).toString()}
-                        height={180}
-                      />
-                    </div>
-                  )}
-
-                  {/* Notes */}
-                  {(data.athlete_notes || data.athlete_feedback || data.athlete_feeling || data.coach_notes) && (
-                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 space-y-3">
-                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Notas y feedback</h4>
-                      {data.athlete_notes && (
-                        <div>
-                          <p className="text-xs text-gray-400 uppercase font-medium">Notas del atleta</p>
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{data.athlete_notes}</p>
-                        </div>
-                      )}
-                      {data.athlete_feedback && (
-                        <div>
-                          <p className="text-xs text-gray-400 uppercase font-medium">Feedback</p>
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{data.athlete_feedback}</p>
-                        </div>
-                      )}
-                      {data.athlete_feeling && (
-                        <div>
-                          <p className="text-xs text-gray-400 uppercase font-medium">Sensación</p>
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{data.athlete_feeling}</p>
-                        </div>
-                      )}
-                      {data.coach_notes && userRole === 'coach' && (
-                        <div>
-                          <p className="text-xs text-gray-400 uppercase font-medium">Notas del coach</p>
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{data.coach_notes}</p>
-                        </div>
-                      )}
+                      <BarChart data={hrData} labels={data.splits?.map((_, i) => `${i + 1}`) || hrData.map((_, i) => `${i + 1}`)}
+                        color="#ef4444" unit=" bpm" averageLine formatValue={(v) => Math.round(v).toString()} height={180} />
                     </div>
                   )}
                 </div>
               )}
 
-              {/* MAPA */}
-              {activeTab === 'mapa' && (
-                <RouteMap points={gpsPoints} />
-              )}
+              {activeTab === 'mapa' && gpsPoints.length >= 2 && <RouteMap points={gpsPoints} />}
 
-              {/* PACE */}
               {activeTab === 'pace' && (
                 <div className="space-y-6">
-                  {paceData.length === 0 ? (
-                    <NoData message="No hay datos de pace disponibles." />
-                  ) : (
+                  {paceData.length === 0 ? <NoData message="No hay datos de pace disponibles." /> : (
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <KpiCard icon={Gauge} label="Pace medio" value={avgPace ? formatPace(avgPace) : '—'} sub="/km" color="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" />
@@ -431,39 +459,22 @@ export function WorkoutDetailModal({
                         <KpiCard icon={Activity} label="Segmentos" value={`${paceData.length}`} color="bg-gray-50 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400" />
                       </div>
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Pace por segmento (barra)</h4>
-                        <BarChart
-                          data={paceData}
-                          labels={data.splits?.map((_, i) => `${i + 1}`) || paceData.map((_, i) => `${i + 1}`)}
-                          color="#10b981"
-                          unit=" s/km"
-                          highlightBest
-                          highlightWorst
-                          averageLine
-                          formatValue={(v) => formatPace(v)}
-                        />
+                        <BarChart data={paceData} labels={data.splits?.map((_, i) => `${i + 1}`) || paceData.map((_, i) => `${i + 1}`)}
+                          color="#10b981" unit=" s/km" highlightBest highlightWorst averageLine formatValue={(v) => formatPace(v)} />
                       </div>
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Pace a lo largo del tiempo (línea)</h4>
-                        <LineChart
-                          series={[{ data: paceData, color: '#10b981', label: 'Pace' }]}
+                        <LineChart series={[{ data: paceData, color: '#10b981', label: 'Pace' }]}
                           labels={data.splits?.map((_, i) => `${i + 1}`) || paceData.map((_, i) => `${i + 1}`)}
-                          unit=" s/km"
-                          fillArea
-                          formatValue={(v) => formatPace(v)}
-                        />
+                          unit=" s/km" fillArea formatValue={(v) => formatPace(v)} />
                       </div>
                     </>
                   )}
                 </div>
               )}
 
-              {/* WATTS */}
               {activeTab === 'watts' && (
                 <div className="space-y-6">
-                  {wattsData.length === 0 ? (
-                    <NoData message="No hay datos de potencia disponibles." />
-                  ) : (
+                  {wattsData.length === 0 ? <NoData message="No hay datos de potencia disponibles." /> : (
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <KpiCard icon={Zap} label="Watts avg" value={avgWatts ? `${Math.round(avgWatts)} W` : '—'} color="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" />
@@ -471,41 +482,24 @@ export function WorkoutDetailModal({
                         {np && <KpiCard icon={Zap} label="Potencia normalizada" value={`${Math.round(np)} W`} color="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400" />}
                         <KpiCard icon={Activity} label="Segmentos" value={`${wattsData.length}`} color="bg-gray-50 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400" />
                       </div>
-                      {data.zone_distribution && data.zone_distribution.length > 0 && (
-                        <ZoneBar zones={data.zone_distribution} />
-                      )}
+                      {data.zone_distribution && data.zone_distribution.length > 0 && <ZoneBar zones={data.zone_distribution} />}
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Watts por segmento (barra)</h4>
-                        <BarChart
-                          data={wattsData}
-                          labels={data.splits?.map((_, i) => `${i + 1}`) || wattsData.map((_, i) => `${i + 1}`)}
-                          color="#f59e0b"
-                          unit=" W"
-                          averageLine
-                          formatValue={(v) => Math.round(v).toString()}
-                        />
+                        <BarChart data={wattsData} labels={data.splits?.map((_, i) => `${i + 1}`) || wattsData.map((_, i) => `${i + 1}`)}
+                          color="#f59e0b" unit=" W" averageLine formatValue={(v) => Math.round(v).toString()} />
                       </div>
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Potencia a lo largo del tiempo (línea)</h4>
-                        <LineChart
-                          series={[{ data: wattsData, color: '#f59e0b', label: 'Watts' }]}
+                        <LineChart series={[{ data: wattsData, color: '#f59e0b', label: 'Watts' }]}
                           labels={data.splits?.map((_, i) => `${i + 1}`) || wattsData.map((_, i) => `${i + 1}`)}
-                          unit=" W"
-                          fillArea
-                          formatValue={(v) => Math.round(v).toString()}
-                        />
+                          unit=" W" fillArea formatValue={(v) => Math.round(v).toString()} />
                       </div>
                     </>
                   )}
                 </div>
               )}
 
-              {/* PULSO */}
               {activeTab === 'pulso' && (
                 <div className="space-y-6">
-                  {hrData.length === 0 ? (
-                    <NoData message="No hay datos de frecuencia cardíaca disponibles." />
-                  ) : (
+                  {hrData.length === 0 ? <NoData message="No hay datos de frecuencia cardíaca disponibles." /> : (
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <KpiCard icon={Heart} label="Pulso avg" value={avgHr ? `${Math.round(avgHr)} bpm` : '—'} color="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400" />
@@ -513,41 +507,24 @@ export function WorkoutDetailModal({
                         {minHr && <KpiCard icon={Heart} label="Pulso min" value={`${Math.round(minHr)} bpm`} color="bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400" />}
                         <KpiCard icon={Activity} label="Puntos" value={`${hrData.length}`} color="bg-gray-50 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400" />
                       </div>
-                      {data.zone_distribution && data.zone_distribution.length > 0 && (
-                        <ZoneBar zones={data.zone_distribution} />
-                      )}
+                      {data.zone_distribution && data.zone_distribution.length > 0 && <ZoneBar zones={data.zone_distribution} />}
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Pulso por segmento (barra)</h4>
-                        <BarChart
-                          data={hrData}
-                          labels={data.splits?.map((_, i) => `${i + 1}`) || hrData.map((_, i) => `${i + 1}`)}
-                          color="#ef4444"
-                          unit=" bpm"
-                          averageLine
-                          formatValue={(v) => Math.round(v).toString()}
-                        />
+                        <BarChart data={hrData} labels={data.splits?.map((_, i) => `${i + 1}`) || hrData.map((_, i) => `${i + 1}`)}
+                          color="#ef4444" unit=" bpm" averageLine formatValue={(v) => Math.round(v).toString()} />
                       </div>
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Frecuencia cardíaca a lo largo del tiempo (línea)</h4>
-                        <LineChart
-                          series={[{ data: hrData, color: '#ef4444', label: 'FC' }]}
+                        <LineChart series={[{ data: hrData, color: '#ef4444', label: 'FC' }]}
                           labels={data.splits?.map((_, i) => `${i + 1}`) || hrData.map((_, i) => `${i + 1}`)}
-                          unit=" bpm"
-                          fillArea
-                          formatValue={(v) => Math.round(v).toString()}
-                        />
+                          unit=" bpm" fillArea formatValue={(v) => Math.round(v).toString()} />
                       </div>
                     </>
                   )}
                 </div>
               )}
 
-              {/* CADENCIA */}
               {activeTab === 'cadencia' && (
                 <div className="space-y-6">
-                  {cadenceData.length === 0 ? (
-                    <NoData message="No hay datos de cadencia disponibles." />
-                  ) : (
+                  {cadenceData.length === 0 ? <NoData message="No hay datos de cadencia disponibles." /> : (
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <KpiCard icon={TrendingUp} label="Cadencia avg" value={avgCadence ? `${Math.round(avgCadence)} rpm` : '—'} color="bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400" />
@@ -555,25 +532,13 @@ export function WorkoutDetailModal({
                         <KpiCard icon={Activity} label="Segmentos" value={`${cadenceData.length}`} color="bg-gray-50 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400" />
                       </div>
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Cadencia por segmento (barra)</h4>
-                        <BarChart
-                          data={cadenceData}
-                          labels={data.splits?.map((_, i) => `${i + 1}`) || cadenceData.map((_, i) => `${i + 1}`)}
-                          color="#3b82f6"
-                          unit=" rpm"
-                          averageLine
-                          formatValue={(v) => Math.round(v).toString()}
-                        />
+                        <BarChart data={cadenceData} labels={data.splits?.map((_, i) => `${i + 1}`) || cadenceData.map((_, i) => `${i + 1}`)}
+                          color="#3b82f6" unit=" rpm" averageLine formatValue={(v) => Math.round(v).toString()} />
                       </div>
                       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Cadencia a lo largo del tiempo (línea)</h4>
-                        <LineChart
-                          series={[{ data: cadenceData, color: '#3b82f6', label: 'Cadencia' }]}
+                        <LineChart series={[{ data: cadenceData, color: '#3b82f6', label: 'Cadencia' }]}
                           labels={data.splits?.map((_, i) => `${i + 1}`) || cadenceData.map((_, i) => `${i + 1}`)}
-                          unit=" rpm"
-                          fillArea
-                          formatValue={(v) => Math.round(v).toString()}
-                        />
+                          unit=" rpm" fillArea formatValue={(v) => Math.round(v).toString()} />
                       </div>
                     </>
                   )}
@@ -587,49 +552,28 @@ export function WorkoutDetailModal({
         {hasActions && (
           <div className="flex items-center gap-2 px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0 overflow-x-auto">
             {onEdit && (
-              <button
-                onClick={onEdit}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition"
-              >
-                <Edit2 size={15} />
-                {t('workout.edit')}
+              <button onClick={onEdit}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition">
+                <Edit2 size={15} /> {t('workout.edit')}
               </button>
             )}
             {onDuplicate && (
-              <button
-                onClick={onDuplicate}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition"
-              >
-                <CopyCheck size={15} />
-                {t('workout.duplicate')}
+              <button onClick={onDuplicate}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition">
+                <CopyCheck size={15} /> {t('workout.duplicate')}
               </button>
             )}
             {onCopy && (
-              <button
-                onClick={onCopy}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition"
-              >
-                <Copy size={15} />
-                {t('workout.copy')}
-              </button>
-            )}
-            {isCompleted && onViewActivity && (
-              <button
-                onClick={onViewActivity}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition"
-              >
-                <ExternalLink size={15} />
-                {t('workout.viewActivity')}
+              <button onClick={onCopy}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition">
+                <Copy size={15} /> {t('workout.copy')}
               </button>
             )}
             <div className="flex-1" />
             {onDelete && (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition"
-              >
-                <Trash2 size={15} />
-                {t('workout.delete')}
+              <button onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition">
+                <Trash2 size={15} /> {t('workout.delete')}
               </button>
             )}
           </div>
@@ -642,26 +586,15 @@ export function WorkoutDetailModal({
               <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
                 <Trash2 size={22} className="text-red-500" />
               </div>
-              <h3 className="text-center font-bold text-gray-900 dark:text-white mb-2">
-                {t('workout.deleteConfirmTitle')}
-              </h3>
-              <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-6">
-                {t('workout.deleteConfirmMessage')}
-              </p>
+              <h3 className="text-center font-bold text-gray-900 dark:text-white mb-2">{t('workout.deleteConfirmTitle')}</h3>
+              <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-6">{t('workout.deleteConfirmMessage')}</p>
               <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                >
+                <button onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
                   {t('workout.cancel')}
                 </button>
-                <button
-                  onClick={() => {
-                    setShowDeleteConfirm(false);
-                    onDelete?.();
-                  }}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition"
-                >
+                <button onClick={() => { setShowDeleteConfirm(false); onDelete?.(); }}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition">
                   {t('workout.delete')}
                 </button>
               </div>
