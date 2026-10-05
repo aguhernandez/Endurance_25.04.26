@@ -158,9 +158,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sessionStorage.removeItem('user_profile');
       setUserState(null);
       setProfileState(null);
+      window.history.replaceState(null, '', '/');
+      window.location.href = '/';
       return;
     }
     hubLogout();
+    window.history.replaceState(null, '', '/');
+    window.location.href = '/';
   };
 
   const setDevProfile = (devProfile: Profile) => {
