@@ -414,6 +414,21 @@ export interface HubCoachAthlete {
 
 export async function hubGetCoachAthletes(coachHubId: string): Promise<HubCoachAthlete[]> {
   const headers = await plannerHeaders();
+
+  // Try the standalone coach-athletes edge function first
+  try {
+    const res1 = await fetch(
+      `${BASE_URL}/coach-athletes?coach_id=${encodeURIComponent(coachHubId)}`,
+      { headers }
+    );
+    if (res1.ok) {
+      const json = await res1.json();
+      const athletes = json.athletes || json.data || [];
+      if (athletes.length > 0) return athletes;
+    }
+  } catch {}
+
+  // Fallback: try the endurance-satellite-bridge (currently returns 404 for this route)
   const res = await fetch(
     `${BASE_URL}/endurance-satellite-bridge/coach-athletes?coach_id=${encodeURIComponent(coachHubId)}`,
     { headers }
