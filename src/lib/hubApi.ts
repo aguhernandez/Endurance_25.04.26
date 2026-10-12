@@ -1,7 +1,8 @@
 import { supabase } from './supabase';
 
-const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyoobqhlmlnuvl.supabase.co';
+const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyiibqhlmlnuvl.supabase.co';
 const BASE_URL = `${HUB_API_URL}/functions/v1`;
+const SESSION_REVIEW_FUNCTION = import.meta.env.VITE_HUB_SESSION_REVIEW_FUNCTION || 'endurance-satellite-bridge';
 
 const SESSION_TOKEN_KEY = 'hub_session_token';
 
@@ -424,6 +425,20 @@ export async function hubGetCoachAthletes(coachHubId: string): Promise<HubCoachA
   }
   const json = await res.json();
   return json.athletes || json.data || [];
+}
+
+export type HubSessionAction = 'get-session-analysis' | 'get-session-timeseries' | 'list-review-inbox' | 'save-review';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- These Hub actions return capability-dependent JSON with no generated schema.
+export type HubSessionPayload = Record<string, any>;
+
+/** Session analysis and review data are owned and calculated by the Hub. */
+export async function hubSessionAction(action: HubSessionAction, params: HubSessionPayload = {}): Promise<HubSessionPayload> {
+  const res = await fetch(`${BASE_URL}/${SESSION_REVIEW_FUNCTION}`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ action, ...params }),
+  });
+  return handleResponse<HubSessionPayload>(res);
 }
 
 export async function hubGetAthleteProfile(athleteId: string, fallbackEmail?: string): Promise<HubAthleteProfile> {

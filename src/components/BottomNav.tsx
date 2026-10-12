@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Home, Users, BookOpen, Settings, BarChart3, MoreHorizontal, CalendarRange, Layers } from 'lucide-react';
+import { Home, Users, BookOpen, Settings, BarChart3, MoreHorizontal, CalendarRange, Layers, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavProps {
   currentPage: string;
@@ -10,6 +11,7 @@ interface BottomNavProps {
 export default function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   const [showMore, setShowMore] = useState(false);
   const { profile } = useAuth();
+  const { language } = useLanguage();
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'coach', 'athlete'] },
@@ -18,6 +20,7 @@ export default function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
     { id: 'calendar', label: 'Calendar', icon: CalendarRange, roles: ['admin', 'coach', 'athlete'] },
     { id: 'athletes', label: 'Athletes', icon: Users, roles: ['admin', 'coach'] },
     { id: 'reporting', label: 'Reporting', icon: BarChart3, roles: ['admin', 'coach'] },
+    { id: 'reviews', label: language === 'es' ? 'Revisiones' : 'Session reviews', icon: ClipboardCheck, roles: ['admin', 'coach', 'athlete'] },
     { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'coach', 'athlete'] },
   ];
 

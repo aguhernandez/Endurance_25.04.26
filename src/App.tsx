@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import AdminDashboard from './components/AdminDashboard';
 import CoachDashboard from './components/CoachDashboard';
@@ -15,13 +15,30 @@ import WeeklySummaryView from './components/WeeklySummaryView';
 import ProgramTemplates from './components/templates/ProgramTemplates';
 import PublicLanding from './components/PublicLanding';
 import LoginModal from './components/auth/LoginModal';
+import SessionAnalysis, { ReviewInbox } from './components/SessionAnalysis';
 
-type View = 'dashboard' | 'settings' | 'athletes' | 'library' | 'reporting' | 'atp' | 'calendar' | 'weekly' | 'templates';
+type View = 'dashboard' | 'settings' | 'athletes' | 'library' | 'reporting' | 'atp' | 'calendar' | 'weekly' | 'templates' | 'reviews' | 'workouts';
 
 function AppContent() {
-  const { user, profile, loading, isDevMode, logout, setDevProfile } = useAuth();
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+  const { user, profile, loading, isDevMode, logout, setDevProfile, login } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [currentView, setCurrentView] = useState<View>(() => params.get('view') === 'review-inbox' ? 'reviews' : 'dashboard');
   const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const requestedHubLogin = useRef(false);
+  const analysisView = params.get('view') === 'session-analysis';
+  const protectedHubView = analysisView || params.get('view') === 'review-inbox';
+  const athleteId = params.get('athlete') || '';
+  const plannedId = params.get('planned') || 'none';
+  const executedId = params.get('executed') || 'none';
+
+  useEffect(() => {
+    if (!protectedHubView || user || isDevMode) requestedHubLogin.current = false;
+    if (!loading && !user && !isDevMode && protectedHubView && !requestedHubLogin.current) {
+      requestedHubLogin.current = true;
+      login();
+    }
+  }, [loading, user, isDevMode, protectedHubView, login]);
 
   if (loading) {
     return (
@@ -35,7 +52,7 @@ function AppContent() {
   }
 
   if (isDevMode && !profile) {
-    return <LocalDevMode onProfileSelected={setDevProfile} />;
+    return <LocalDevMode onProfileSelected={devProfile => setDevProfile({ ...devProfile, full_name: devProfile.full_name ?? '' })} />;
   }
 
   // Show public landing when not authenticated
@@ -70,7 +87,18 @@ function AppContent() {
     );
   }
 
+  if (!profile) return null;
+
   const renderContent = () => {
+    if (analysisView) {
+      return <SessionAnalysis athleteId={athleteId} plannedId={plannedId} executedId={executedId} onBack={() => { const next = new URLSearchParams(params); next.delete('view'); next.delete('athlete'); next.delete('planned'); next.delete('executed'); setParams(next); setCurrentView('dashboard'); }} />;
+    }
+    if (currentView === 'reviews' || params.get('view') === 'review-inbox') {
+      return <ReviewInbox onOpen={row => {
+        const next = new URLSearchParams({ view: 'session-analysis', athlete: String(row.athlete_id ?? row.athlete?.id ?? ''), planned: String(row.planned_session_id ?? 'none'), executed: String(row.executed_session_id ?? row.id ?? 'none') });
+        setParams(next);
+      }} />;
+    }
     if (currentView === 'settings') {
       return <Settings />;
     }
@@ -100,7 +128,7 @@ function AppContent() {
     }
 
     if (currentView === 'calendar') {
-      return <CalendarView onNavigate={setCurrentView} />;
+      return <CalendarView onNavigate={view => setCurrentView(view as View)} />;
     }
 
     if (currentView === 'weekly') {
@@ -115,17 +143,17 @@ function AppContent() {
           </div>
         );
       }
-      return <WeeklySummaryView athleteId={athleteId} onNavigate={setCurrentView} />;
+      return <WeeklySummaryView athleteId={athleteId} onNavigate={view => setCurrentView(view as View)} />;
     }
 
     if (currentView === 'dashboard') {
       if (profile.role === 'admin') {
-        return <AdminDashboard onNavigate={setCurrentView} />;
+        return <AdminDashboard onNavigate={view => setCurrentView(view)} />;
       }
       if (profile.role === 'coach') {
-        return <CoachDashboard onNavigate={setCurrentView} />;
+        return <CoachDashboard onNavigate={view => setCurrentView(view)} />;
       }
-      return <AthleteDashboard onNavigate={setCurrentView} />;
+      return <AthleteDashboard onNavigate={view => setCurrentView(view)} />;
     }
 
     return (
@@ -143,7 +171,7 @@ function AppContent() {
   return (
     <MainLayout
       currentPage={currentView}
-      onNavigate={(page) => setCurrentView(page as View)}
+      onNavigate={(page) => { setCurrentView(page as View); if (page !== 'session-analysis') navigate('/', { replace: false }); }}
       onLogout={logout}
     >
       {renderContent()}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const HUB_FRONTEND_URL = import.meta.env.VITE_HUB_FRONTEND_URL || 'https://hub.asciende.pro';
-const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyoobqhlmlnuvl.supabase.co';
+const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyiibqhlmlnuvl.supabase.co';
 const SESSION_TOKEN_KEY = 'hub_session_token';
 
 export type MembershipSlug = 'inicia' | 'intermediate' | 'pro';
@@ -63,8 +63,9 @@ export function useSatelliteAuth() {
     if (tokenFromUrl) {
       console.log('[Auth] session_token found in URL, storing...');
       localStorage.setItem(SESSION_TOKEN_KEY, tokenFromUrl);
-      const cleanUrl = window.location.href.split('?')[0];
-      window.history.replaceState({}, '', cleanUrl);
+      urlParams.delete('session_token');
+      const remaining = urlParams.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${remaining ? `?${remaining}` : ''}${window.location.hash}`);
     }
 
     checkAuth();
@@ -156,7 +157,7 @@ export function useSatelliteAuth() {
   };
 
   const login = () => {
-    const currentUrl = window.location.href.split('?')[0];
+    const currentUrl = window.location.href;
     const hubAuthUrl = `${HUB_FRONTEND_URL}?redirect=${encodeURIComponent(currentUrl)}`;
     window.location.href = hubAuthUrl;
   };

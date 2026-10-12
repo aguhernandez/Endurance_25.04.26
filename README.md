@@ -4,7 +4,7 @@ A minimal cycling training management platform for coaches and athletes.
 
 ## Overview
 
-This app is the **Cycling Satellite** module of the Asciende platform. It integrates with the main Asciende HUB by sharing the same Supabase database, allowing seamless data flow between gym workouts, nutrition tracking, and cycling training.
+This app is the **Endurance Planner** satellite module of the Asciende platform. User authentication is handled by the Hub. Planner-to-Hub session analysis and review data are exchanged through Hub Edge Function actions using the `X-Planner-Token` header; the Planner does not read wearable tables or raw activity payloads.
 
 ## Key Features
 
@@ -60,22 +60,23 @@ When FTP changes, all historical sessions automatically reflect the new zones an
 
 ## Integration with HUB
 
-This app shares the same Supabase database as the Asciende HUB, enabling:
-- Shared user authentication
-- Cross-app visibility of training data
-- Unified athlete management
-- Coordinated training planning (gym + cycling)
+The Planner and Hub have separate Supabase projects. The Hub owns login, access checks, session analysis, timeseries, and review storage. Configure the Hub project URL with `VITE_HUB_API_URL`; the session review Edge Function defaults to the existing `endurance-satellite-bridge` and can be overridden with `VITE_HUB_SESSION_REVIEW_FUNCTION`. The Planner sends `get-session-analysis`, `get-session-timeseries`, `list-review-inbox`, and `save-review` actions using its configured `X-Planner-Token`.
+
+The analysis view accepts `?view=session-analysis&athlete=<id>&planned=<id|none>&executed=<id|none>`. When no Hub session is present, it redirects to Hub login with the full Planner URL as the return address.
+
+### Session analysis tests
+
+Run `npm test` to render the capability blocks against synthetic fixtures. Fixtures live under `tests/fixtures` and are not imported into the production app.
 
 ## Getting Started
 
-1. Sign up as an Athlete or Coach
-2. (Athletes) Set your FTP and start logging sessions
-3. (Coaches) Select an athlete and plan their cycling training
+1. Sign in with your existing Asciende Hub account
+2. Continue planning and reviewing sessions in the Planner; Hub permissions control access to Hub session data
 
 ## Technical Stack
 
 - React + TypeScript
 - Vite
 - Tailwind CSS
-- Supabase (Auth + Database)
+- Supabase client (Planner data; Hub auth and session actions are accessed through the Hub API)
 - Lucide React (Icons)

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Home, Users, BookOpen, Settings, BarChart3, LogOut, Sun, Moon, Globe, CalendarRange, TrendingUp, Layers } from 'lucide-react';
+import { Home, Users, BookOpen, Settings, BarChart3, LogOut, Sun, Moon, Globe, CalendarRange, TrendingUp, Layers, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -32,6 +32,7 @@ export default function Sidebar({ currentPage, onNavigate, onLogout }: SidebarPr
     { id: 'templates', label: 'Programs', icon: Layers, roles: ['admin', 'coach', 'athlete'] },
     { id: 'weekly', label: 'Weekly Summary', icon: TrendingUp, roles: ['admin', 'coach', 'athlete'] },
     { id: 'reporting', label: 'Reporting', icon: BarChart3, roles: ['admin', 'coach'] },
+    { id: 'reviews', label: language === 'es' ? 'Revisión de sesiones' : 'Session reviews', icon: ClipboardCheck, roles: ['admin', 'coach', 'athlete'] },
     { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'coach', 'athlete'] },
   ];
 
