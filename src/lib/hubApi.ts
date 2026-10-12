@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyiibqhlmlnuvl.supabase.co';
+const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyoobqhlmlnuvl.supabase.co';
 const BASE_URL = `${HUB_API_URL}/functions/v1`;
 const SESSION_REVIEW_FUNCTION = import.meta.env.VITE_HUB_SESSION_REVIEW_FUNCTION || 'endurance-satellite-bridge';
 
@@ -35,7 +35,7 @@ export async function loadPlannerToken(): Promise<string> {
   } catch {
     _cachedPlannerToken = import.meta.env.VITE_HUB_PLANNER_TOKEN || '';
   }
-  return _cachedPlannerToken;
+  return _cachedPlannerToken ?? '';
 }
 
 export function invalidatePlannerTokenCache() {
@@ -55,6 +55,15 @@ async function plannerHeaders(): Promise<HeadersInit> {
     'X-Planner-Token': await getPlannerToken(),
     'Content-Type': 'application/json',
   };
+}
+
+/** The Hub-issued session token is distinct from the Planner Supabase session. */
+function hubUserAuthorization(): string {
+  const token = getSessionToken();
+  if (!token) {
+    throw new Error('No hay una sesión activa de Asciende Hub. Vuelve a iniciar sesión desde el Hub.');
+  }
+  return `Bearer ${token}`;
 }
 
 function sessionBearerHeaders(): HeadersInit {
@@ -433,9 +442,16 @@ export type HubSessionPayload = Record<string, any>;
 
 /** Session analysis and review data are owned and calculated by the Hub. */
 export async function hubSessionAction(action: HubSessionAction, params: HubSessionPayload = {}): Promise<HubSessionPayload> {
+  const plannerToken = await getPlannerToken();
+  if (!plannerToken) throw new Error('Falta el X-Planner-Token configurado para conectar con Asciende Hub.');
+  const headers: Record<string, string> = {
+    'X-Planner-Token': plannerToken,
+    'Content-Type': 'application/json',
+  };
+  headers.Authorization = hubUserAuthorization();
   const res = await fetch(`${BASE_URL}/${SESSION_REVIEW_FUNCTION}`, {
     method: 'POST',
-    headers: await plannerHeaders(),
+    headers,
     body: JSON.stringify({ action, ...params }),
   });
   return handleResponse<HubSessionPayload>(res);

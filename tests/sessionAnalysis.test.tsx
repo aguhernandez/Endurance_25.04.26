@@ -9,10 +9,13 @@ const api = vi.hoisted(() => ({ hubSessionAction: vi.fn() }));
 vi.mock('../src/lib/hubApi', () => api);
 
 const seriesFixture = {
-  heart_rate: [120, 145, 165, 150],
-  power: [100, 180, 250, 160],
-  gps: [{ lat: 1, lng: 1, altitude_m: 100 }, { lat: 1.1, lng: 1.1, altitude_m: 110 }],
-  altitude: [100, 105, 110],
+  executed_session_id: 'executed-fixture',
+  capabilities: { hr: true, power: true, gps: true, altitude: true },
+  series: { heart_rate: [120, 145, 165, 150], power: [100, 180, 250, 160], altitude: [100, 105, 110] },
+  route: [{ lat: 1, lng: 1, altitude_m: 100 }, { lat: 1.1, lng: 1.1, altitude_m: 110 }],
+  hr_zone_seconds: [{ zone: 2, seconds: 1200 }],
+  power_zone_seconds: [{ zone: 3, seconds: 600 }],
+  derived: { hr_drift: 4.2, efficiency: 1.8 },
 };
 
 function renderAnalysis(overrides: Record<string, unknown> = {}) {
@@ -25,7 +28,7 @@ function renderAnalysis(overrides: Record<string, unknown> = {}) {
     if (action === 'get-session-timeseries') return seriesFixture;
     return {};
   });
-  return render(<LanguageProvider><SessionAnalysis athleteId="athlete-fixture" plannedId="planned-fixture" executedId="executed-fixture" onBack={() => undefined}/></LanguageProvider>);
+  return render(<LanguageProvider><SessionAnalysis athleteId="athlete-fixture" executedId="executed-fixture" canReview onBack={() => undefined}/></LanguageProvider>);
 }
 
 beforeEach(() => api.hubSessionAction.mockReset());
@@ -33,12 +36,12 @@ afterEach(() => cleanup());
 
 describe('session analysis capability blocks', () => {
   it.each([
-    ['heart_rate_zones', 'Time in zones · HR', 'Z2'],
-    ['power_zones', 'Time in zones · Power', 'Z3'],
-    ['timeseries', 'Time series', '● HR'],
-    ['derived_indicators', 'Indicators', '4.2'],
+    ['hr', 'Time in zones · HR', 'Z2'],
+    ['power', 'Time in zones · Power', 'Z3'],
+    ['hr', 'Time series', '● HR'],
+    ['hr', 'Derived indicators', '4.2'],
     ['laps', 'Laps and intervals', 'Synthetic interval'],
-    ['gps', 'Map and elevation profile', 'Route available · no map library is installed in this project'],
+    ['gps', 'Route and elevation', 'Ruta'],
   ])('renders %s when capability is enabled', async (capability, heading, content) => {
     renderAnalysis({ [capability]: true });
     expect(await screen.findByText(heading)).toBeTruthy();
@@ -46,12 +49,12 @@ describe('session analysis capability blocks', () => {
   });
 
   it.each([
-    ['heart_rate_zones', 'Time in zones · HR'],
-    ['power_zones', 'Time in zones · Power'],
-    ['timeseries', 'Time series'],
-    ['derived_indicators', 'Indicators'],
+    ['hr', 'Time in zones · HR'],
+    ['power', 'Time in zones · Power'],
+    ['hr', 'Time series', { power: false }],
+    ['hr', 'Derived indicators', { power: false }],
     ['laps', 'Laps and intervals'],
-    ['gps', 'Map and elevation profile', { gps: false, altitude: false }],
+    ['gps', 'Route and elevation', { gps: false, altitude: false }],
   ])('omits %s block when capability is disabled', async (capability, heading, extra = {}) => {
     renderAnalysis({ [capability]: false, ...extra });
     await screen.findByText('Session analysis');
@@ -60,20 +63,20 @@ describe('session analysis capability blocks', () => {
 
   it('shows the elevation profile when altitude is available without GPS', async () => {
     renderAnalysis({ gps: false, altitude: true });
-    expect(await screen.findByText('Map and elevation profile')).toBeTruthy();
-    expect(screen.queryByText('Route available · no map library is installed in this project')).toBeNull();
+    expect(await screen.findByText('Route and elevation')).toBeTruthy();
+    expect(screen.getByLabelText('Elevation profile')).toBeTruthy();
   });
 
   it('renders only available header data when every optional capability is absent', async () => {
     api.hubSessionAction.mockImplementation(async (action: string) => action === 'get-session-analysis' ? sessionAnalysisWithoutCapabilities : {});
-    render(<LanguageProvider><SessionAnalysis athleteId="athlete-fixture" plannedId="planned-fixture" executedId="none" onBack={() => undefined}/></LanguageProvider>);
+    render(<LanguageProvider><SessionAnalysis athleteId="athlete-fixture" executedId="executed-fixture" onBack={() => undefined}/></LanguageProvider>);
     expect(await screen.findByText('Session analysis')).toBeTruthy();
     expect(screen.queryByText('Time in zones · HR')).toBeNull();
     expect(screen.queryByText('Time in zones · Power')).toBeNull();
     expect(screen.queryByText('Time series')).toBeNull();
     expect(screen.queryByText('Indicators')).toBeNull();
     expect(screen.queryByText('Laps and intervals')).toBeNull();
-    expect(screen.queryByText('Map and elevation profile')).toBeNull();
+    expect(screen.queryByText('Route and elevation')).toBeNull();
     expect(api.hubSessionAction).toHaveBeenCalledTimes(1);
     expect(api.hubSessionAction).toHaveBeenCalledWith('get-session-analysis', expect.any(Object));
   });
@@ -85,11 +88,10 @@ describe('session analysis capability blocks', () => {
     fireEvent.click(screen.getByLabelText('Visible to athlete'));
     fireEvent.click(screen.getByText('Mark as reviewed'));
     await waitFor(() => expect(api.hubSessionAction).toHaveBeenCalledWith('save-review', expect.objectContaining({
-      athlete_id: 'athlete-fixture',
-      planned_session_id: 'planned-fixture',
       executed_session_id: 'executed-fixture',
+      planned_workout_id: 'planned-fixture',
       comment: 'Synthetic coach note',
-      athlete_visible: true,
+      visible_to_athlete: true,
       status: 'reviewed',
     })));
   });

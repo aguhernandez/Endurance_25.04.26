@@ -29,7 +29,6 @@ function AppContent() {
   const analysisView = params.get('view') === 'session-analysis';
   const protectedHubView = analysisView || params.get('view') === 'review-inbox';
   const athleteId = params.get('athlete') || '';
-  const plannedId = params.get('planned') || 'none';
   const executedId = params.get('executed') || 'none';
 
   useEffect(() => {
@@ -91,11 +90,11 @@ function AppContent() {
 
   const renderContent = () => {
     if (analysisView) {
-      return <SessionAnalysis athleteId={athleteId} plannedId={plannedId} executedId={executedId} onBack={() => { const next = new URLSearchParams(params); next.delete('view'); next.delete('athlete'); next.delete('planned'); next.delete('executed'); setParams(next); setCurrentView('dashboard'); }} />;
+      return <SessionAnalysis athleteId={athleteId} executedId={executedId} canReview={profile.role === 'coach' || profile.role === 'admin'} onBack={() => { const next = new URLSearchParams(params); next.delete('view'); next.delete('athlete'); next.delete('planned'); next.delete('executed'); setParams(next); setCurrentView('dashboard'); }} />;
     }
     if (currentView === 'reviews' || params.get('view') === 'review-inbox') {
-      return <ReviewInbox onOpen={row => {
-        const next = new URLSearchParams({ view: 'session-analysis', athlete: String(row.athlete_id ?? row.athlete?.id ?? ''), planned: String(row.planned_session_id ?? 'none'), executed: String(row.executed_session_id ?? row.id ?? 'none') });
+      return <ReviewInbox defaultAthleteId={user?.id} canReview={profile.role === 'coach' || profile.role === 'admin'} onOpen={row => {
+        const next = new URLSearchParams({ view: 'session-analysis', athlete: String(row.athlete_id ?? row.athlete?.id ?? (profile.role === 'athlete' ? user?.id : '') ?? ''), planned: String(row.planned_workout_id ?? row.planned_workout?.id ?? 'none'), executed: String(row.executed_session_id ?? row.id ?? 'none') });
         setParams(next);
       }} />;
     }

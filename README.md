@@ -60,7 +60,9 @@ When FTP changes, all historical sessions automatically reflect the new zones an
 
 ## Integration with HUB
 
-The Planner and Hub have separate Supabase projects. The Hub owns login, access checks, session analysis, timeseries, and review storage. Configure the Hub project URL with `VITE_HUB_API_URL`; the session review Edge Function defaults to the existing `endurance-satellite-bridge` and can be overridden with `VITE_HUB_SESSION_REVIEW_FUNCTION`. The Planner sends `get-session-analysis`, `get-session-timeseries`, `list-review-inbox`, and `save-review` actions using its configured `X-Planner-Token`.
+The Planner and Hub have separate Supabase projects. The Hub owns login, access checks, session analysis, timeseries, and review storage. Configure the Hub project URL with `VITE_HUB_API_URL`; the session review Edge Function defaults to the existing `endurance-satellite-bridge` and can be overridden with `VITE_HUB_SESSION_REVIEW_FUNCTION`. Session and review actions send both `X-Planner-Token` and `Authorization: Bearer <Hub session token>`. The latter is the Hub-issued token persisted as `hub_session_token` by the Hub login callback; the Planner's own Supabase Auth session is not used for Hub authorization. The Hub resolves user identity and access from this bearer token and validates any `athlete_id` filter.
+
+The Planner consumes `get-session-analysis` and `get-session-timeseries` using `executed_session_id`; it does not read wearable tables or `raw`, and it does not calculate Hub metrics. The review inbox sends a 30-day date range and leaves coach/athlete scope to the Hub. `save-review` is sent only from a coach/admin analysis view and identifies the execution plus the Hub-returned `planned_workout.id` when available. Configure the Planner token in the existing Hub-token settings or `VITE_HUB_PLANNER_TOKEN`; do not commit credentials.
 
 The analysis view accepts `?view=session-analysis&athlete=<id>&planned=<id|none>&executed=<id|none>`. When no Hub session is present, it redirects to Hub login with the full Planner URL as the return address.
 

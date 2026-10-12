@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const HUB_FRONTEND_URL = import.meta.env.VITE_HUB_FRONTEND_URL || 'https://hub.asciende.pro';
-const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyiibqhlmlnuvl.supabase.co';
+const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyoobqhlmlnuvl.supabase.co';
 const SESSION_TOKEN_KEY = 'hub_session_token';
 
 export type MembershipSlug = 'inicia' | 'intermediate' | 'pro';
@@ -98,7 +98,6 @@ export function useSatelliteAuth() {
         return;
       }
 
-      console.log('[Auth] JWT payload:', payload);
       const hubUser = extractUserFromPayload(payload);
 
       if (hubUser) {
@@ -136,7 +135,7 @@ export function useSatelliteAuth() {
     }
 
     const data = await res.json();
-    const token: string = data.token || data.session_token || data.access_token;
+    const token: string = data.access_token || data.session_token || data.token;
     if (!token) throw new Error('No token received from Hub');
 
     localStorage.setItem(SESSION_TOKEN_KEY, token);
