@@ -12,7 +12,6 @@ import { getDifficultyClasses, getDifficultyLabel, SSRResult } from '../lib/sess
 import { WeeklySummaryData } from '../lib/weeklySummary';
 import { WorkoutDetailModal } from './detail/WorkoutDetailModal';
 import { WorkoutData } from '../types/workoutDetail';
-import { hubGetExternalActivities, hubActivityToWorkoutData, HubExternalActivity } from '../lib/hubApi';
 
 interface SessionsCalendarViewProps {
   sessions: TrainingSession[];
@@ -253,38 +252,11 @@ export default function SessionsCalendarView({
   const [detailSteps, setDetailSteps] = useState<WorkoutStep[]>([]);
   const [detailActivityOnly, setDetailActivityOnly] = useState(false);
   const [detailActivitySource, setDetailActivitySource] = useState<string | undefined>(undefined);
-  const [hubActivities, setHubActivities] = useState<HubExternalActivity[]>([]);
-
-  const handleViewHubActivity = useCallback((act: HubExternalActivity) => {
-    setDetailActivityOnly(true);
-    setDetailActivitySource(act.source === 'asciende_gps' ? 'GPS Asciende' : act.source === 'strava' ? 'Strava' : act.source || 'Hub');
-    setDetailWorkoutSource(null);
-    setDetailSteps([]);
-    setDetailWorkout(hubActivityToWorkoutData(act));
-  }, []);
-
-  const renderHubActivityPill = (act: HubExternalActivity, compact = false) => {
-    const sport = act.sport_type || 'other';
-    const colors = getSportColor(sport);
-    const name = act.name || sport;
-    const dur = act.duration_seconds ? `${Math.round(act.duration_seconds / 60)}m` : '';
-    return (
-      <div
-        key={`hub-${act.id}`}
-        onClick={(e) => { e.stopPropagation(); handleViewHubActivity(act); }}
-        className={`cursor-pointer select-none ${compact ? 'text-[10px] px-1.5 py-1' : 'text-xs p-1.5'} rounded-lg border ${colors.bg} ${colors.text} ${colors.border} transition hover:shadow-sm hover:brightness-95 flex items-center gap-1`}
-      >
-        <Activity size={10} className="flex-shrink-0 opacity-60" />
-        <span className="truncate font-semibold leading-tight">{name}</span>
-        {!compact && dur && <span className="opacity-60 flex-shrink-0">{dur}</span>}
-      </div>
-    );
-  };
-
   const handleViewDetail = useCallback(async (w: Workout) => {
     setDetailWorkoutSource(w);
-    setDetailActivityOnly(false);
-    setDetailActivitySource(undefined);
+    const isExternalActivity = w.hub_matched_key?.startsWith('ext|');
+    setDetailActivityOnly(isExternalActivity ?? false);
+    setDetailActivitySource(isExternalActivity ? (w.notes?.replace('Actividad importada desde ', '') || 'Hub') : undefined);
     setDetailSteps([]);
     try {
       const { data: stepRows } = await supabase
@@ -377,24 +349,8 @@ export default function SessionsCalendarView({
   useEffect(() => {
     if (athleteId || currentUserId) {
       loadWorkouts();
-      loadHubActivities();
     }
   }, [athleteId, currentUserId]);
-
-  const loadHubActivities = async () => {
-    const hubId = hubAthleteId || athleteId || currentUserId;
-    if (!hubId) return;
-    try {
-      const now = new Date();
-      const dateTo = toLocalDateStr(now);
-      const dateFrom = toLocalDateStr(new Date(now.getFullYear(), now.getMonth() - 3, 1));
-      const acts = await hubGetExternalActivities(hubId, dateFrom, dateTo);
-      setHubActivities(acts);
-    } catch (err) {
-      console.error('Error loading Hub activities:', err);
-      setHubActivities([]);
-    }
-  };
 
   const loadWorkouts = async () => {
     const filterAthleteId = athleteId;
@@ -475,15 +431,8 @@ export default function SessionsCalendarView({
     return workouts.filter(w => w.scheduled_date === dateStr);
   };
 
-  const getUnplannedHubActivitiesByDate = (date: Date): HubExternalActivity[] => {
-    const dateStr = toLocalDateStr(date);
-    const plannedDates = new Set(workouts.map(w => w.scheduled_date));
-    return hubActivities.filter(act => {
-      if (act.local_date !== dateStr) return false;
-      if (plannedDates.has(act.local_date)) return false;
-      return true;
-    });
-  };
+  // External Hub activities are now stored as workouts in the DB via syncExternalActivities,
+  // so no separate Hub activity fetch is needed here.
 
   const toLocalDateStr = (date: Date): string => {
     const y = date.getFullYear();
@@ -911,10 +860,9 @@ export default function SessionsCalendarView({
                         const dateStr = toLocalDateStr(dateForDay);
                         const daySess = getSessionsByDate(dateForDay);
                         const dayWkts = getWorkoutsByDate(dateForDay);
-                        const dayHubActs = getUnplannedHubActivitiesByDate(dateForDay);
                         const isToday = isSameDay(dateForDay, new Date());
                         const isDragTarget = dragOverDate === dateStr;
-                        const hasContent = dayWkts.length > 0 || daySess.length > 0 || dayHubActs.length > 0;
+                        const hasContent = dayWkts.length > 0 || daySess.length > 0;
 
                         return (
                           <div
@@ -957,11 +905,10 @@ export default function SessionsCalendarView({
                                   {getSportIcon(session.sport)} {session.session_name || 'Session'}
                                 </div>
                               ))}
-                              {dayWkts.slice(0, 2).map(workout => renderWorkoutPill(workout, true))}
-                              {dayHubActs.slice(0, 1).map(log => renderHubActivityPill(log, true))}
-                              {(daySess.length + dayWkts.length + dayHubActs.length) > 3 && (
+                              {dayWkts.slice(0, 3).map(workout => renderWorkoutPill(workout, true))}
+                              {(daySess.length + dayWkts.length) > 4 && (
                                 <p className="text-[9px] text-gray-400 dark:text-gray-500 px-0.5">
-                                  +{daySess.length + dayWkts.length + dayHubActs.length - 3} more
+                                  +{daySess.length + dayWkts.length - 4} more
                                 </p>
                               )}
                             </div>
@@ -1071,7 +1018,6 @@ export default function SessionsCalendarView({
                 const dateStr = toLocalDateStr(date);
                 const daySess = getSessionsByDate(date);
                 const dayWkts = getWorkoutsByDate(date);
-                const dayHubActs = getUnplannedHubActivitiesByDate(date);
                 const isToday = isSameDay(date, new Date());
                 const isDragTarget = dragOverDate === dateStr;
 
@@ -1112,8 +1058,7 @@ export default function SessionsCalendarView({
                         </div>
                       ))}
                       {dayWkts.map(workout => renderWorkoutPill(workout))}
-                      {dayHubActs.map(log => renderHubActivityPill(log))}
-                      {daySess.length === 0 && dayWkts.length === 0 && dayHubActs.length === 0 && (
+                      {daySess.length === 0 && dayWkts.length === 0 && (
                         <button
                           onClick={e => { e.stopPropagation(); setSelectedDateForTraining(date); setShowTrainingModal(true); }}
                           className="w-full py-2 text-[10px] text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500 transition border border-dashed border-gray-200 dark:border-gray-700 rounded-lg"
@@ -1153,10 +1098,9 @@ export default function SessionsCalendarView({
               {(() => {
                 const daySess = getSessionsByDate(currentDate);
                 const dayWkts = getWorkoutsByDate(currentDate);
-                const dayHubActs = getUnplannedHubActivitiesByDate(currentDate);
                 return (
                   <>
-                    {daySess.length === 0 && dayWkts.length === 0 && dayHubActs.length === 0 ? (
+                    {daySess.length === 0 && dayWkts.length === 0 ? (
                       <p className="text-center text-gray-400 dark:text-gray-500 py-12 text-sm">No sessions scheduled</p>
                     ) : (
                       <div className="space-y-3">
@@ -1282,41 +1226,6 @@ export default function SessionsCalendarView({
                               </div>
                             )}
                           </div>
-                          );
-                        })}
-                        {dayHubActs.map(act => {
-                          const sport = act.sport_type || 'other';
-                          const colors = getSportColor(sport);
-                          const distKm = act.distance_meters ? act.distance_meters / 1000 : null;
-                          const durMin = act.duration_seconds ? Math.round(act.duration_seconds / 60) : 0;
-                          const sourceLabel = act.source === 'asciende_gps' ? 'GPS Asciende' : act.source === 'strava' ? 'Strava' : act.source || '';
-                          return (
-                            <div key={`hub-day-${act.id}`} className={`border rounded-xl p-4 ${colors.border} ${colors.bg} cursor-pointer hover:shadow-md transition`}
-                              onClick={() => handleViewHubActivity(act)}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <Activity size={16} className={colors.text} />
-                                    <h4 className={`font-semibold ${colors.text}`}>{act.name || sport}</h4>
-                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                                      Sin planificación
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 capitalize">
-                                    {sport} · {durMin} min
-                                    {distKm ? ` · ${distKm.toFixed(1)} km` : ''}
-                                    {sourceLabel ? ` · ${sourceLabel}` : ''}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                                {act.average_heartrate && <span className="flex items-center gap-1"><Activity size={12} /> {Math.round(act.average_heartrate)} bpm</span>}
-                                {act.average_power && <span className="flex items-center gap-1"><Zap size={12} /> {Math.round(act.average_power)}W</span>}
-                                {act.tss && <span>TSS: {Math.round(act.tss)}</span>}
-                                {act.rpe && <span>RPE: {act.rpe}/10</span>}
-                              </div>
-                            </div>
                           );
                         })}
                       </div>

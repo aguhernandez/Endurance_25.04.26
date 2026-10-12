@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { hubGetTrainingSchedule, hubGetExternalActivities, HubTrainingSchedule, HubExternalActivity, HubScheduledWorkout } from '../lib/hubApi';
+import { hubGetTrainingSchedule, hubGetExternalActivities, HubTrainingSchedule, HubExternalActivity, HubScheduledWorkout, hubActivityToWorkoutData } from '../lib/hubApi';
 import { supabase } from '../lib/supabase';
 
 export interface UseHubScheduleResult {
@@ -271,6 +271,7 @@ async function syncExternalActivities(
   try {
     const activityDates = activities.map(a => a.local_date);
 
+    // Check existing training_sessions for dedup
     const { data: existing, error: queryError } = await supabase
       .from('training_sessions')
       .select('id, session_date, session_name, sport')
@@ -284,12 +285,23 @@ async function syncExternalActivities(
     }
 
     const existingKey = (d: string, n: string) => `${d}|${n?.toLowerCase() || ''}`;
-
     const existingSet = new Set(
       (existing || []).map(e => existingKey(e.session_date, e.session_name || ''))
     );
 
-    const toInsert: Array<{
+    // Check existing workouts for dedup (by hub_matched_key)
+    const { data: existingWkts } = await supabase
+      .from('workouts')
+      .select('id, hub_matched_key')
+      .eq('athlete_id', localAthleteId)
+      .not('hub_matched_key', 'is', null)
+      .in('scheduled_date', activityDates);
+
+    const existingWktKeys = new Set(
+      (existingWkts || []).map((w: any) => w.hub_matched_key as string)
+    );
+
+    const toInsertSessions: Array<{
       athlete_id: string;
       sport: string;
       session_date: string;
@@ -300,40 +312,76 @@ async function syncExternalActivities(
       notes: string | null;
     }> = [];
 
+    const toInsertWorkouts: Array<Record<string, unknown>> = [];
+
     for (const a of activities) {
       const sport = mapSportType(a.sport_type || '');
       const durationMin = a.duration_seconds ? Math.round(a.duration_seconds / 60) : 0;
       const distanceKm = a.distance_meters ? a.distance_meters / 1000 : null;
       const sessionName = a.name || `${a.source} ${sport}`;
       const key = existingKey(a.local_date, sessionName);
+      const wktMatchKey = `ext|${a.local_date}|${localAthleteId}|${sport}|${a.id}`;
 
-      if (existingSet.has(key)) continue;
-      existingSet.add(key);
+      if (existingSet.has(key) && existingWktKeys.has(wktMatchKey)) continue;
+      if (!existingSet.has(key)) {
+        existingSet.add(key);
+        toInsertSessions.push({
+          athlete_id: localAthleteId,
+          sport,
+          session_date: a.local_date,
+          session_name: sessionName,
+          status: 'completed',
+          duration_minutes: durationMin || 1,
+          distance_km: distanceKm ? Math.round(distanceKm * 100) / 100 : null,
+          notes: a.source ? `Importado desde ${a.source}` : null,
+        });
+      }
 
-      toInsert.push({
-        athlete_id: localAthleteId,
-        sport,
-        session_date: a.local_date,
-        session_name: sessionName,
-        status: 'completed',
-        duration_minutes: durationMin || 1,
-        distance_km: distanceKm ? Math.round(distanceKm * 100) / 100 : null,
-        notes: a.source ? `Importado desde ${a.source}` : null,
-      });
+      if (!existingWktKeys.has(wktMatchKey)) {
+        const workoutData = hubActivityToWorkoutData(a);
+        toInsertWorkouts.push({
+          athlete_id: localAthleteId,
+          coach_id: localAthleteId,
+          sport: sport as any,
+          name: sessionName,
+          scheduled_date: a.local_date,
+          status: 'completed',
+          completed_at: a.start_time || a.local_date + 'T00:00:00Z',
+          compliance_status: 'completed',
+          hub_matched_key: wktMatchKey,
+          hub_data: workoutData as any,
+          is_library: false,
+          estimated_duration_minutes: durationMin || null,
+          actual_duration_minutes: durationMin || null,
+          notes: a.source ? `Actividad importada desde ${a.source}` : null,
+        });
+        existingWktKeys.add(wktMatchKey);
+      }
     }
 
-    if (toInsert.length === 0) return 0;
+    let insertedCount = 0;
 
-    const { error: insertError } = await supabase
-      .from('training_sessions')
-      .insert(toInsert);
-
-    if (insertError) {
-      console.error('[HubSync] Failed to insert external activities:', insertError);
-      return 0;
+    if (toInsertSessions.length > 0) {
+      const { error: insertError } = await supabase
+        .from('training_sessions')
+        .insert(toInsertSessions);
+      if (insertError) {
+        console.error('[HubSync] Failed to insert external activities:', insertError);
+      }
     }
 
-    return toInsert.length;
+    if (toInsertWorkouts.length > 0) {
+      const { error: wktError } = await supabase
+        .from('workouts')
+        .insert(toInsertWorkouts);
+      if (wktError) {
+        console.error('[HubSync] Failed to insert external activity workouts:', wktError);
+      } else {
+        insertedCount += toInsertWorkouts.length;
+      }
+    }
+
+    return toInsertSessions.length + insertedCount;
   } catch (err) {
     console.error('[HubSync] syncExternalActivities error:', err);
     return 0;
