@@ -39,7 +39,7 @@ export default function MainLayout({
         <main className={`flex-1 overflow-y-auto pb-24 md:pb-0 ${
           sidebarExpanded ? 'md:ml-64' : 'md:ml-16'
         } transition-all duration-300`}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+          <div className={`${currentPage === 'calendar' ? 'max-w-[1600px] 2xl:max-w-[1800px]' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8`}>
             {children}
           </div>
         </main>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { TrainingSession, supabase } from '../lib/supabase';
-import { ChevronLeft, ChevronRight, Clock, TrendingUp, Zap, Activity, Gauge, Plus, BookOpen, Dumbbell, CreditCard as Edit2, Trash2, Copy, CopyCheck, X, BarChart2, Tag as TagIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, TrendingUp, Zap, Activity, Gauge, Plus, BookOpen, Dumbbell, CreditCard as Edit2, Trash2, Copy, CopyCheck, X, BarChart2, Tag as TagIcon, MoreVertical } from 'lucide-react';
 import TrainingTypeModal from './TrainingTypeModal';
 import ScheduleWorkoutModal from './ScheduleWorkoutModal';
 import WeeklyAtpDrawer from './WeeklyAtpDrawer';
@@ -39,6 +39,27 @@ const SPORT_COLORS: Record<string, { bg: string; text: string; border: string; d
 
 function getSportColor(sport?: string) {
   return SPORT_COLORS[sport || ''] || SPORT_COLORS.default;
+}
+
+function formatWorkoutDuration(minutes?: number | null) {
+  if (minutes == null) return null;
+  const total = Math.round(minutes);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}:00`;
+}
+
+const WORKOUT_STEP_COLORS: Record<string, string> = {
+  warmup: 'bg-amber-400', steady: 'bg-emerald-500', interval: 'bg-primary-purple', recovery: 'bg-sky-400', cooldown: 'bg-violet-300',
+};
+
+function WorkoutProfile({ steps, compact = false }: { steps: WorkoutStep[]; compact?: boolean }) {
+  if (!steps.length) return null;
+  return <div className={`mt-2 flex items-end gap-[2px] overflow-hidden rounded-b-md bg-white/50 px-1 pt-1 dark:bg-black/10 ${compact ? 'h-5' : 'h-8'}`} role="img" aria-label={`Perfil de ${steps.length} pasos del entrenamiento`}>
+    {steps.slice(0, compact ? 10 : 18).map((step, index) => {
+      const typeColor = WORKOUT_STEP_COLORS[step.step_type] || WORKOUT_STEP_COLORS.steady;
+      const targetHeight = step.target_zone ? Math.min(100, 34 + step.target_zone * 9) : step.step_type === 'interval' ? 90 : step.step_type === 'recovery' ? 35 : step.step_type === 'warmup' || step.step_type === 'cooldown' ? 48 : 66;
+      return <span key={step.id || index} title={`${step.step_type}${step.target_zone ? ` · Z${step.target_zone}` : ''}`} className={`min-w-[3px] flex-1 rounded-t-[2px] ${typeColor} opacity-80`} style={{ height: `${targetHeight}%` }} />;
+    })}
+  </div>;
 }
 
 interface WorkoutContextMenuProps {
@@ -158,6 +179,13 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
     : getSportColor(workout.sport);
 
   const compliance = workout.compliance_status;
+  const hubData = (workout.hub_data ?? {}) as Record<string, unknown>;
+  const metricWorkout = workout as Workout & { distance_km?: number; estimated_distance_km?: number; actual_distance_km?: number; actual_tss?: number; tss?: number };
+  const durationMinutes = workout.actual_duration_minutes ?? workout.estimated_duration_minutes;
+  const distanceKm = Number(hubData.actual_distance_km ?? hubData.distance_km ?? metricWorkout.actual_distance_km ?? metricWorkout.estimated_distance_km ?? metricWorkout.distance_km);
+  const tss = Number(hubData.actual_tss ?? metricWorkout.actual_tss ?? metricWorkout.tss);
+  const steps = workout.steps ?? [];
+  const durationLabel = formatWorkoutDuration(durationMinutes);
 
   const complianceRing: Record<string, string> = {
     completed: 'ring-2 ring-emerald-500',
@@ -187,6 +215,12 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
     }
   };
 
+  const openMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const rect = pillRef.current?.getBoundingClientRect();
+    if (rect) setMenuPos({ x: Math.max(8, Math.min(rect.left, window.innerWidth - 228)), y: rect.bottom + 4 });
+  };
+
   return (
     <div
       ref={pillRef}
@@ -195,22 +229,33 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
         e.stopPropagation();
         onDragStart(workout);
       }}
-      className={`relative group cursor-pointer select-none ${
-        compact ? 'text-[10px] px-1.5 py-1' : 'text-xs p-1.5'
-      } rounded-lg border ${colors.bg} ${colors.text} ${colors.border} ${compliance ? complianceRing[compliance] : ''} transition hover:shadow-sm hover:brightness-95`}
+      className={`relative group cursor-pointer select-none overflow-hidden border-l-[3px] ${
+        compact ? 'text-[11px] px-2 py-1.5 rounded-lg shadow-sm' : 'text-sm p-3 rounded-xl shadow-sm hover:shadow-md'
+      } border ${colors.bg} ${colors.text} ${colors.border} ${compliance ? complianceRing[compliance] : ''} transition hover:brightness-[0.98]`}
       onClick={handleClick}
     >
-      <div className="flex items-center gap-1 min-w-0">
-        {compliance ? (
-          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${complianceDot[compliance]}`} title={compliance === 'completed' ? 'Completado correctamente' : compliance === 'modified' ? 'Modificado' : 'No realizado'} />
-        ) : (
-          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
-        )}
-        <span className="truncate font-semibold leading-tight">{workout.name}</span>
-        {!compact && workout.estimated_duration_minutes && (
-          <span className="opacity-60 flex-shrink-0">{workout.estimated_duration_minutes}m</span>
-        )}
+      <div className="flex items-start justify-between gap-1 min-w-0">
+        <div className="flex items-start gap-1.5 min-w-0">
+          {compliance ? (
+            <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${complianceDot[compliance]}`} title={compliance === 'completed' ? 'Completado correctamente' : compliance === 'modified' ? 'Modificado' : 'No realizado'} />
+          ) : (
+            <span className="mt-0.5 text-sm leading-none flex-shrink-0" aria-hidden="true">{getSportIcon(workout.sport)}</span>
+          )}
+          <span className={`font-bold leading-tight ${compact ? 'line-clamp-2' : 'line-clamp-2'}`}>{workout.name}</span>
+        </div>
+        <button type="button" onClick={openMenu} className="-mr-1 -mt-1 flex-shrink-0 rounded-md p-1 text-gray-500 hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/10" aria-label="Opciones del entrenamiento" title="Opciones">
+          <MoreVertical size={compact ? 14 : 17} />
+        </button>
       </div>
+
+      {!compact && <p className="mt-1 text-[11px] font-medium uppercase tracking-wide opacity-60">{workout.sport}{workout.intensity_basis ? ` · ${workout.intensity_basis}` : ''}</p>}
+      <div className={`mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-semibold ${compact ? 'text-[10px]' : 'text-xs'}`}>
+        {durationLabel && <span className="inline-flex items-center gap-1"><Clock size={compact ? 10 : 12} className="opacity-60"/>{durationLabel}</span>}
+        {Number.isFinite(distanceKm) && distanceKm > 0 && <span>{distanceKm.toFixed(1)} km</span>}
+        {Number.isFinite(tss) && tss > 0 && <span>{Math.round(tss)} TSS</span>}
+        {!Number.isFinite(tss) && workout.estimated_impulse != null && <span>{Math.round(workout.estimated_impulse)} carga</span>}
+      </div>
+      <WorkoutProfile steps={steps} compact={compact} />
 
       {menuPos && (
         <WorkoutContextMenu
@@ -378,12 +423,24 @@ export default function SessionsCalendarView({
 
       const { data, error } = await query;
       if (error) throw error;
-      const ws = data || [];
-      setWorkouts(ws);
+      const ws = (data || []) as Workout[];
 
       if (ws.length > 0) {
         const ids = ws.map((w: Workout) => w.id);
         const map: Record<string, Tag[]> = {};
+        const stepsByWorkout: Record<string, WorkoutStep[]> = {};
+        for (let start = 0; start < ids.length; start += 100) {
+          const { data: stepRows, error: stepError } = await supabase
+            .from('workout_steps')
+            .select('*')
+            .in('workout_id', ids.slice(start, start + 100))
+            .order('order');
+          if (stepError) console.warn('Could not load workout preview steps:', stepError.message);
+          for (const step of (stepRows || []) as WorkoutStep[]) {
+            (stepsByWorkout[step.workout_id] ||= []).push(step);
+          }
+        }
+        setWorkouts(ws.map(w => ({ ...w, steps: stepsByWorkout[w.id] || [] })));
         for (let start = 0; start < ids.length; start += 20) {
           const { data: wtRows } = await supabase
             .from('workout_tags')
@@ -855,7 +912,7 @@ export default function SessionsCalendarView({
                   return (
                     <div key={rowIndex} className="grid gap-1 grid-cols-[repeat(7,1fr)_72px]">
                       {row.map((dateForDay, colIndex) => {
-                        if (!dateForDay) return <div key={`empty-${rowIndex}-${colIndex}`} className="h-[96px]" />;
+                        if (!dateForDay) return <div key={`empty-${rowIndex}-${colIndex}`} className="h-[184px]" />;
 
                         const dateStr = toLocalDateStr(dateForDay);
                         const daySess = getSessionsByDate(dateForDay);
@@ -867,7 +924,7 @@ export default function SessionsCalendarView({
                         return (
                           <div
                             key={dateStr}
-                            className={`min-h-[96px] max-h-[120px] overflow-hidden border rounded-lg p-2 transition-all relative flex flex-col group ${
+                            className={`min-h-[184px] max-h-[208px] overflow-hidden border rounded-lg p-2.5 transition-all relative flex flex-col group ${
                               isToday
                                 ? 'border-amber-400 bg-amber-50/60 dark:bg-amber-900/10'
                                 : isDragTarget
@@ -905,10 +962,10 @@ export default function SessionsCalendarView({
                                   {getSportIcon(session.sport)} {session.session_name || 'Session'}
                                 </div>
                               ))}
-                              {dayWkts.slice(0, 3).map(workout => renderWorkoutPill(workout, true))}
-                              {(daySess.length + dayWkts.length) > 4 && (
+                              {dayWkts.slice(0, 2).map(workout => renderWorkoutPill(workout, true))}
+                              {(daySess.length + dayWkts.length) > (Math.min(daySess.length, 1) + Math.min(dayWkts.length, 2)) && (
                                 <p className="text-[9px] text-gray-400 dark:text-gray-500 px-0.5">
-                                  +{daySess.length + dayWkts.length - 4} more
+                                  +{daySess.length + dayWkts.length - Math.min(daySess.length, 1) - Math.min(dayWkts.length, 2)} more
                                 </p>
                               )}
                             </div>
@@ -928,11 +985,11 @@ export default function SessionsCalendarView({
                         );
                       })}
 
-                      <div className="min-h-[96px] max-h-[120px] flex flex-col items-center justify-center">
+                      <div className="min-h-[184px] max-h-[208px] flex flex-col items-center justify-center">
                         {atpWeek && atpColors ? (
                           <button
                             onClick={() => setDrawerWeek(atpWeek)}
-                            className={`w-full h-[96px] rounded-lg border flex flex-col items-center justify-center gap-1 px-1 transition-all hover:scale-105 ${atpColors.bg} border-transparent hover:border-current`}
+                            className={`w-full h-[184px] rounded-lg border flex flex-col items-center justify-center gap-1 px-1 transition-all hover:scale-[1.02] ${atpColors.bg} border-transparent hover:border-current`}
                           >
                             <div className={`w-2 h-2 rounded-full ${atpColors.dot}`} />
                             <p className={`text-[9px] font-bold text-center leading-tight ${atpColors.text}`}>
@@ -947,14 +1004,14 @@ export default function SessionsCalendarView({
                             <BarChart2 size={10} className={`${atpColors.text} opacity-60 mt-0.5`} />
                           </button>
                         ) : hasAtpPlan ? (
-                          <div className="w-full h-[96px] rounded-lg border border-dashed border-gray-200 dark:border-gray-700/50 flex items-center justify-center">
+                          <div className="w-full h-[184px] rounded-lg border border-dashed border-gray-200 dark:border-gray-700/50 flex items-center justify-center">
                             <span className="text-[9px] text-gray-300 dark:text-gray-600">—</span>
                           </div>
                         ) : (
                           <button
                             onClick={() => onNavigateToATP?.()}
                             title="No hay plan ATP — click para crear uno"
-                            className="w-full h-[96px] rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-400 dark:hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 flex flex-col items-center justify-center gap-1 transition-all"
+                            className="w-full h-[184px] rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-400 dark:hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 flex flex-col items-center justify-center gap-1 transition-all"
                           >
                             <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500">N/D</p>
                             <p className="text-[8px] text-gray-400 dark:text-gray-500 text-center leading-tight">Crear ATP</p>
@@ -1013,7 +1070,8 @@ export default function SessionsCalendarView({
                   </span>
                 </button>
               ) : null}
-              <div className="grid grid-cols-7 gap-2">
+              <div className="overflow-x-auto pb-2">
+              <div className="grid min-w-[1120px] grid-cols-7 gap-3 lg:min-w-0">
               {weekDays.map(date => {
                 const dateStr = toLocalDateStr(date);
                 const daySess = getSessionsByDate(date);
@@ -1024,7 +1082,7 @@ export default function SessionsCalendarView({
                 return (
                   <div
                     key={dateStr}
-                    className={`border rounded-xl p-2.5 min-h-[140px] flex flex-col transition-all ${
+                    className={`border rounded-xl p-2.5 min-h-[250px] flex flex-col transition-all ${
                       isToday
                         ? 'border-amber-400 bg-amber-50/60 dark:bg-amber-900/10'
                         : isDragTarget
@@ -1070,6 +1128,7 @@ export default function SessionsCalendarView({
                   </div>
                 );
               })}
+              </div>
               </div>
             </>
             );
@@ -1185,6 +1244,9 @@ export default function SessionsCalendarView({
                           }) : null;
                           const diffCls = diff ? getDifficultyClasses(diff.difficulty) : null;
                           const wColors = diffCls ?? getSportColor(workout.sport);
+                          const hubData = (workout.hub_data ?? {}) as Record<string, unknown>;
+                          const distanceKm = Number(hubData.actual_distance_km ?? hubData.distance_km ?? (workout as any).estimated_distance_km ?? (workout as any).distance_km);
+                          const actualTss = Number(hubData.actual_tss ?? (workout as any).actual_tss ?? (workout as any).tss);
                           return (
                           <div key={workout.id} className={`border rounded-xl p-4 ${wColors.border} ${wColors.bg}`}>
                             <div className="flex items-start justify-between">
@@ -1197,10 +1259,14 @@ export default function SessionsCalendarView({
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 capitalize">
-                                  {workout.sport} · {workout.estimated_duration_minutes} min
-                                  {workout.intensity_basis && ` · ${workout.intensity_basis.toUpperCase()}`}
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 capitalize">
+                                  {workout.sport}{workout.intensity_basis && ` · ${workout.intensity_basis.toUpperCase()}`}
                                 </p>
+                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                                  {formatWorkoutDuration(workout.actual_duration_minutes ?? workout.estimated_duration_minutes) && <span className="inline-flex items-center gap-1"><Clock size={13} className="text-gray-400"/>{formatWorkoutDuration(workout.actual_duration_minutes ?? workout.estimated_duration_minutes)}</span>}
+                                  {Number.isFinite(distanceKm) && distanceKm > 0 && <span>{distanceKm.toFixed(1)} km</span>}
+                                  {Number.isFinite(actualTss) && actualTss > 0 ? <span>{Math.round(actualTss)} TSS</span> : workout.estimated_impulse != null && <span>{Math.round(workout.estimated_impulse)} carga</span>}
+                                </div>
                               </div>
                               <div className="flex gap-1">
                                 <button onClick={() => handleEditWorkout(workout)} className="p-1.5 rounded-lg hover:bg-white/60 dark:hover:bg-gray-700 transition" title="Edit">
@@ -1217,6 +1283,7 @@ export default function SessionsCalendarView({
                                 </button>
                               </div>
                             </div>
+                            <WorkoutProfile steps={workout.steps ?? []} />
                             {workout.description && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{workout.description}</p>}
                             {diff && (
                               <div className={`mt-2 flex items-center gap-4 px-3 py-1.5 rounded-lg text-xs ${diffCls!.bg}`}>
