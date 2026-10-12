@@ -300,7 +300,7 @@ export default function WorkoutBuilder({
       }
 
       if (hubAthleteId && selectedTags.length > 0) {
-        collectAndPushAthleteTags(hubAthleteId, `workout:${name}`).catch(() => {});
+        collectAndPushAthleteTags(athleteId || coachId, hubAthleteId, `workout:${name}`).catch(() => {});
       }
 
       onSaved();

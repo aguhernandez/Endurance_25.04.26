@@ -18,6 +18,7 @@ interface SessionsCalendarViewProps {
   sessions: TrainingSession[];
   ftp: number | null;
   athleteId?: string | null;
+  hubAthleteId?: string | null;
   onCreateSession?: (date: Date, discipline: string, type: string, opts?: { elevationM?: number; scheduledTime?: string }) => void;
   onEditWorkout?: (workout: Workout) => void;
   onWorkoutsChanged?: () => void;
@@ -228,7 +229,7 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
 }
 
 export default function SessionsCalendarView({
-  sessions, ftp, athleteId, onCreateSession, onEditWorkout, onWorkoutsChanged, isCoach = false, currentUserId = '',
+  sessions, ftp, athleteId, hubAthleteId, onCreateSession, onEditWorkout, onWorkoutsChanged, isCoach = false, currentUserId = '',
   weeklyAtpSummaries = [],
   hasAtpPlan = true,
   onNavigateToATP,
@@ -381,7 +382,7 @@ export default function SessionsCalendarView({
   }, [athleteId, currentUserId]);
 
   const loadHubActivities = async () => {
-    const hubId = athleteId || currentUserId;
+    const hubId = hubAthleteId || athleteId || currentUserId;
     if (!hubId) return;
     try {
       const now = new Date();
@@ -410,7 +411,10 @@ export default function SessionsCalendarView({
         .order('scheduled_date');
 
       if (filterAthleteId && filterUserId && filterAthleteId !== filterUserId) {
-        query = query.eq('athlete_id', filterAthleteId);
+        // Coach viewing an athlete: show workouts where athlete_id matches,
+        // OR where coach_id is the current user (coach) AND athlete_id matches,
+        // OR where coach_id is the athlete themselves (self-coached from Hub sync)
+        query = query.or(`athlete_id.eq.${filterAthleteId},coach_id.eq.${filterAthleteId},coach_id.eq.${filterUserId}`);
       } else if (filterAthleteId || filterUserId) {
         const id = filterAthleteId || filterUserId;
         query = query.or(`coach_id.eq.${id},athlete_id.eq.${id}`);

@@ -32,7 +32,7 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   const [syncBanner, setSyncBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showAIGenerator, setShowAIGenerator] = useState(false);
   const [workoutsVersion, setWorkoutsVersion] = useState(0);
-  const [autoPulled, setAutoPulled] = useState(false);
+  const [autoPulledFor, setAutoPulledFor] = useState<string | null>(null);
 
   const { pushing, pushWeeklyPlan } = useHubPlan();
   const { loading: pullLoading, fetchSchedule, activitiesCount } = useHubSchedule();
@@ -109,6 +109,8 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
       });
     }
     setWorkoutsVersion(v => v + 1);
+    // Reload training_sessions so newly synced external activities appear immediately
+    if (target.id) loadSessions(target.id);
     if (!isAuto) setTimeout(() => setSyncBanner(null), 8000);
   };
 
@@ -121,11 +123,12 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   }, [athletes, athletesLoading]);
 
   useEffect(() => {
-    if (activeHubId && activeAthleteId && !autoPulled) {
-      setAutoPulled(true);
+    const key = activeHubId ?? null;
+    if (activeHubId && activeAthleteId && autoPulledFor !== key) {
+      setAutoPulledFor(key);
       handlePullActivity(true);
     }
-  }, [activeHubId, activeAthleteId, autoPulled]);
+  }, [activeHubId, activeAthleteId, autoPulledFor]);
 
   useEffect(() => {
     if (!isCoach && profile) {
@@ -369,6 +372,7 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
               sessions={sessions}
               ftp={ftp}
               athleteId={activeAthleteId}
+              hubAthleteId={activeHubId}
               isCoach={isCoach}
               currentUserId={profile?.id || ''}
               onCreateSession={handleCreateSessionRequest}

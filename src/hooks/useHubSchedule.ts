@@ -84,7 +84,7 @@ async function syncCompletedWorkoutsFromHub(
 
   const { data: localWorkouts, error: queryError } = await supabase
     .from('workouts')
-    .select('id, name, sport, status, scheduled_date, estimated_duration_minutes, estimated_impulse, compliance_status, hub_matched_key, local_data')
+    .select('id, name, sport, status, scheduled_date, estimated_duration_minutes, estimated_impulse, compliance_status, hub_matched_key, local_data, athlete_id, coach_id')
     .or(`coach_id.eq.${localAthleteId},athlete_id.eq.${localAthleteId}`)
     .in('scheduled_date', allScheduledDates);
 
@@ -93,10 +93,10 @@ async function syncCompletedWorkoutsFromHub(
     return { synced: 0, updated: 0, skipped: 0 };
   }
 
-  if (!localWorkouts || localWorkouts.length === 0) return { synced: 0, updated: 0, skipped: 0 };
+  const localWorkoutList = localWorkouts || [];
 
   const alreadyMatchedKeys = new Set<string>();
-  for (const lw of localWorkouts) {
+  for (const lw of localWorkoutList) {
     const matchedKey = (lw as any).hub_matched_key as string | null;
     if (matchedKey) alreadyMatchedKeys.add(matchedKey);
   }
@@ -113,8 +113,10 @@ async function syncCompletedWorkoutsFromHub(
     actualName: string;
     matchKey: string;
     hubData: HubScheduledWorkout;
-    localData: typeof localWorkouts[0];
+    localData: typeof localWorkoutList[0];
   }> = [];
+
+  const inserts: Array<Record<string, unknown>> = [];
 
   let skippedCount = 0;
 
@@ -124,20 +126,20 @@ async function syncCompletedWorkoutsFromHub(
     const hubDuration = sw.actual_duration_minutes ?? sw.workout?.duration_minutes ?? null;
     const hubImpulse = sw.actual_impulse ?? null;
 
-    const bestMatch = localWorkouts.find(lw =>
+    const bestMatch = localWorkoutList.find(lw =>
       lw.scheduled_date === sw.scheduled_date &&
       mapSportType(lw.sport || 'other') === hubSport
     );
 
+    const exerciseType = hubSport;
+    const matchKey = makeMatchKey(sw.scheduled_date, localAthleteId, exerciseType);
+
+    if (alreadyMatchedKeys.has(matchKey)) {
+      skippedCount++;
+      continue;
+    }
+
     if (bestMatch) {
-      const exerciseType = hubSport;
-      const matchKey = makeMatchKey(sw.scheduled_date, localAthleteId, exerciseType);
-
-      if (alreadyMatchedKeys.has(matchKey)) {
-        skippedCount++;
-        continue;
-      }
-
       const compliance = computeCompliance(
         bestMatch.estimated_duration_minutes ?? null,
         bestMatch.estimated_impulse ?? null,
@@ -162,6 +164,26 @@ async function syncCompletedWorkoutsFromHub(
         hubData: sw,
         localData: bestMatch,
       });
+    } else {
+      // No local workout exists for this Hub completion — create one
+      inserts.push({
+        athlete_id: localAthleteId,
+        sport: hubSport as any,
+        name: hubName || `${hubSport} — Hub`,
+        scheduled_date: sw.scheduled_date,
+        status: 'completed',
+        completed_at: sw.scheduled_date + 'T00:00:00Z',
+        compliance_status: 'completed',
+        hub_matched_key: matchKey,
+        hub_data: sw,
+        is_library: false,
+        estimated_duration_minutes: sw.planned_duration_minutes ?? sw.workout?.duration_minutes ?? hubDuration ?? null,
+        actual_duration_minutes: hubDuration,
+        actual_impulse: hubImpulse,
+        rpe: sw.rpe ?? null,
+        notes: sw.athlete_notes ?? sw.coach_notes ?? null,
+      });
+      alreadyMatchedKeys.add(matchKey);
     }
   }
 
@@ -170,11 +192,28 @@ async function syncCompletedWorkoutsFromHub(
       .filter(sw => sw.status === 'pending' || sw.status === 'planned')
       .map(sw => sw.scheduled_date)
   );
-  const missedWorkouts = localWorkouts.filter(lw =>
+  const missedWorkouts = localWorkoutList.filter(lw =>
     plannedDates.has(lw.scheduled_date) && lw.status === 'planned'
   );
 
   let syncedCount = 0;
+
+  // Insert new workouts for Hub completions that had no local match
+  if (inserts.length > 0) {
+    try {
+      const { error: insertError } = await supabase
+        .from('workouts')
+        .insert(inserts);
+      if (insertError) {
+        console.error('[HubSync] Failed to insert Hub-completed workouts:', insertError);
+      } else {
+        syncedCount += inserts.length;
+      }
+    } catch (err) {
+      console.error('[HubSync] Error inserting Hub workouts:', err);
+    }
+  }
+
   for (const u of updates) {
     try {
       const updatePayload: Record<string, unknown> = {
@@ -184,6 +223,7 @@ async function syncCompletedWorkoutsFromHub(
         hub_matched_key: u.matchKey,
         hub_data: u.hubData,
         local_data: u.localData,
+        athlete_id: localAthleteId,
       };
       if (u.actualDuration != null) updatePayload.actual_duration_minutes = u.actualDuration;
       if (u.actualImpulse != null) updatePayload.actual_impulse = u.actualImpulse;

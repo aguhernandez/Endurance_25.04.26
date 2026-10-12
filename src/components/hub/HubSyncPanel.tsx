@@ -577,7 +577,7 @@ export default function HubSyncPanel({ hubAthleteId, localAthleteId, ftpWatts, a
     setTagsError(null);
     setTagsResult(null);
     try {
-      const result = await collectAndPushAthleteTags(hubAthleteId, `athlete:${localAthleteId}`);
+      const result = await collectAndPushAthleteTags(localAthleteId, hubAthleteId, `athlete:${localAthleteId}`);
       if (result) {
         setTagsResult(result);
       } else {
