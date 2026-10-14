@@ -539,17 +539,8 @@ export default function HubSyncPanel({ hubAthleteId, localAthleteId, ftpWatts, a
   };
 
   const handleFetchSchedule = () => {
-    const today = new Date();
-    const dateFrom = new Date(today);
-    dateFrom.setDate(today.getDate() - 14);
-    const dateTo = new Date(today);
-    dateTo.setDate(today.getDate() + 28);
-    fetchSchedule(
-      hubAthleteId,
-      localAthleteId,
-      dateFrom.toISOString().split('T')[0],
-      dateTo.toISOString().split('T')[0]
-    );
+    // Window (past 90 days + 12 weeks ahead) is enforced by the hook
+    fetchSchedule(hubAthleteId, localAthleteId);
   };
 
   const handlePullTrainingLogs = () => {

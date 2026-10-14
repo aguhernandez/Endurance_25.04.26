@@ -77,19 +77,18 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
     if (!target || !target.hub_user_id) return;
     if (!isAuto) setSyncBanner(null);
 
-    const today = new Date();
-    const from = new Date(today);
-    from.setDate(today.getDate() - 90);
-    const fromStr = from.toISOString().split('T')[0];
-    const toStr = today.toISOString().split('T')[0];
+    // Window (past 90 days + 12 weeks ahead) is enforced by the hook
     let planned = 0;
     let done = 0;
     let pending = 0;
     let failed = 0;
+    let cached = false;
 
     try {
-      const result = await fetchSchedule(target.hub_user_id!, target.id, fromStr, toStr);
-      if (!result) {
+      const result = await fetchSchedule(target.hub_user_id!, target.id);
+      if (result === 'cached') {
+        cached = true;
+      } else if (!result) {
         failed++;
       } else {
         const workouts = result.scheduled_workouts || [];
@@ -103,10 +102,14 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
     }
 
     if (!isAuto) {
-      setSyncBanner({
-        type: failed > 0 && done === 0 ? 'error' : 'success',
-        message: `Hub (90 dias): ${planned} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''}, ${pending} pendiente${pending !== 1 ? 's' : ''}${failed > 0 ? ', con error' : ''}`,
-      });
+      setSyncBanner(
+        cached
+          ? { type: 'success', message: 'Hub sincronizado hace menos de 10 minutos — no hay datos nuevos que pedir.' }
+          : {
+              type: failed > 0 && done === 0 ? 'error' : 'success',
+              message: `Hub (90 dias): ${planned} planificado${planned !== 1 ? 's' : ''}, ${done} completado${done !== 1 ? 's' : ''}, ${pending} pendiente${pending !== 1 ? 's' : ''}${failed > 0 ? ', con error' : ''}`,
+            }
+      );
     }
     setWorkoutsVersion(v => v + 1);
     // Reload training_sessions so newly synced external activities appear immediately

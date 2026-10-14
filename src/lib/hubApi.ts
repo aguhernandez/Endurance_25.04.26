@@ -2,6 +2,21 @@ import { supabase } from './supabase';
 
 const HUB_API_URL = import.meta.env.VITE_HUB_API_URL || 'https://ngkcbygyoobqhlmlnuvl.supabase.co';
 const BASE_URL = `${HUB_API_URL}/functions/v1`;
+
+/**
+ * Hub pull configuration — the ONLY place these limits are defined.
+ * - PULL_WINDOW_DAYS: pull past workouts only from the last 90 days.
+ * - FUTURE_WINDOW_DAYS: pull planned workouts up to 12 weeks ahead.
+ * - RECENT_RECHECK_DAYS: workouts newer than 7 days (and future ones) may have
+ *   changed in Hub, so they are re-consulted; older ones are immutable once loaded.
+ * - PULL_MIN_INTERVAL_MS: minimum time between full pulls of the same athlete.
+ * - PAGE_SIZE: rows per request when paginating.
+ */
+export const PULL_WINDOW_DAYS = 90;
+export const FUTURE_WINDOW_DAYS = 84; // 12 weeks
+export const RECENT_RECHECK_DAYS = 7;
+export const PULL_MIN_INTERVAL_MS = 10 * 60 * 1000;
+export const PAGE_SIZE = 200;
 const SESSION_REVIEW_FUNCTION = import.meta.env.VITE_HUB_SESSION_REVIEW_FUNCTION || 'endurance-satellite-bridge';
 
 const SESSION_TOKEN_KEY = 'hub_session_token';
@@ -511,6 +526,20 @@ export async function hubGetBiologicalPassport(athleteId: string, fallbackEmail?
   return handleResponse<HubBiologicalPassport>(res);
 }
 
+/**
+ * Compute the pull window for one athlete: the past 90 days plus planned
+ * workouts up to 12 weeks ahead. All Hub pulls must use this window — never
+ * fetch the full history.
+ */
+export function hubPullWindow(reference = new Date()): { dateFrom: string; dateTo: string } {
+  const from = new Date(reference);
+  from.setDate(from.getDate() - PULL_WINDOW_DAYS);
+  const to = new Date(reference);
+  to.setDate(to.getDate() + FUTURE_WINDOW_DAYS);
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  return { dateFrom: fmt(from), dateTo: fmt(to) };
+}
+
 export async function hubGetTrainingSchedule(
   athleteId: string,
   dateFrom: string,
@@ -529,11 +558,19 @@ export async function hubGetTrainingSchedule(
   const workouts = (json.scheduled_workouts || json.schedule || json.data || []) as HubScheduledWorkout[];
   const logs = (json.completed_training_logs || json.logs || []) as HubCompletedLog[];
   const loads = (json.weekly_loads || []) as HubWeeklyLoad[];
+  // Completed logs can carry gps_track/zone blobs; the planner renders those
+  // from workouts it already imported, so drop them from the bulk schedule pull.
+  const lightLogs = logs.map(l => ({
+    ...l,
+    gps_track: undefined,
+    zone_distribution: undefined,
+    activity_log: undefined,
+  }));
   return {
     date_from: (json.date_from as string) || dateFrom,
     date_to: (json.date_to as string) || dateTo,
-    scheduled_workouts: workouts,
-    completed_training_logs: logs,
+    scheduled_workouts: workouts.map(w => ({ ...w, gps_track: undefined, zone_distribution: undefined, activity_log: undefined })),
+    completed_training_logs: lightLogs,
     weekly_loads: loads,
   };
 }
@@ -623,6 +660,7 @@ export async function hubGetExternalActivities(
     athlete_id: athleteId,
     date_from: dateFrom,
     date_to: dateTo,
+    page_size: String(PAGE_SIZE),
   });
   const res = await fetch(
     `${BASE_URL}/endurance-satellite-bridge/activities?${params}`,
@@ -633,7 +671,9 @@ export async function hubGetExternalActivities(
     return [];
   }
   const json = await res.json();
-  return json.activities || json.data || [];
+  const items: HubExternalActivity[] = json.activities || json.data || [];
+  // Strip heavy JSON the planner never renders (raw payload from the source app)
+  return items.map(a => ({ ...a, raw_data: undefined }));
 }
 
 export function hubActivityToWorkoutData(act: HubExternalActivity): import('../types/workoutDetail').WorkoutData {
