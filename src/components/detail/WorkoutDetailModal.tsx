@@ -3,7 +3,7 @@ import {
   X, Activity, Gauge, Heart, Zap, MapPin, TrendingUp, Mountain, Timer, Bike,
   Edit2, CopyCheck, Copy, Trash2, ExternalLink, ArrowLeft, ClipboardList,
 } from 'lucide-react';
-import { WorkoutData, GpsPoint } from '../../types/workout';
+import { WorkoutData, GpsPoint, ZoneDistribution } from '../../types/workoutDetail';
 import { WorkoutStep } from '../../types/workout';
 import { BarChart, LineChart } from './Charts';
 import { RouteMap } from './RouteMap';
@@ -29,6 +29,90 @@ interface WorkoutDetailModalProps {
 
 type View = 'plan' | 'activity';
 type TabId = 'resumen' | 'mapa' | 'pace' | 'watts' | 'pulso' | 'cadencia';
+type TelemetryKey = 'pace' | 'altitude' | 'heart_rate' | 'power_watts' | 'cadence';
+
+const TELEMETRY: Record<TelemetryKey, { label: string; color: string; unit: string }> = {
+  pace: { label: 'Pace', color: '#16a34a', unit: '/km' },
+  altitude: { label: 'Altitud', color: '#64748b', unit: ' m' },
+  heart_rate: { label: 'Pulso', color: '#ef4444', unit: ' bpm' },
+  power_watts: { label: 'Watts', color: '#d946ef', unit: ' W' },
+  cadence: { label: 'Cadencia', color: '#f59e0b', unit: ' rpm' },
+};
+
+function UnifiedTelemetry({ points, onHover }: { points: GpsPoint[]; onHover: (index: number | null) => void }) {
+  const [visible, setVisible] = useState<TelemetryKey[]>([]);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const series = useMemo(() => ({
+    pace: points.map(p => p.speed_kmh && p.speed_kmh > 0 ? 3600 / p.speed_kmh : null),
+    altitude: points.map(p => p.altitude_m ?? null),
+    heart_rate: points.map(p => p.heart_rate ?? null),
+    power_watts: points.map(p => p.power_watts ?? null),
+    cadence: points.map(p => p.cadence ?? null),
+  }), [points]);
+  const available = (Object.keys(TELEMETRY) as TelemetryKey[]).filter(key => series[key].some(v => v != null && Number.isFinite(v)));
+  useEffect(() => {
+    const defaults = (['pace', 'altitude'] as TelemetryKey[]).filter(key => available.includes(key));
+    setVisible(defaults.length ? defaults : available.slice(0, 2));
+  }, [available.join('|')]);
+  const width = 1000, height = 290, left = 34, right = 16, top = 18, bottom = 28;
+  const plotW = width - left - right, plotH = height - top - bottom;
+  const x = (index: number) => left + index / Math.max(1, points.length - 1) * plotW;
+  const valuesFor = (key: TelemetryKey) => series[key].filter((v): v is number => v != null && Number.isFinite(v));
+  const rangeFor = (key: TelemetryKey) => {
+    const vals = valuesFor(key); const min = Math.min(...vals), max = Math.max(...vals);
+    return { min, range: max - min || 1 };
+  };
+  const y = (key: TelemetryKey, value: number) => {
+    const { min, range } = rangeFor(key);
+    const normalized = (value - min) / range;
+    return top + plotH * (key === 'pace' ? normalized : 1 - normalized);
+  };
+  const onMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const index = Math.round(ratio * (points.length - 1));
+    setHoverIndex(index); onHover(index);
+  };
+
+  if (!points.length) return null;
+  return <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Análisis de la actividad</h4>
+      <div className="flex flex-wrap gap-1.5">
+        {available.map(key => {
+          const selected = visible.includes(key); const config = TELEMETRY[key];
+          return <button key={key} onClick={() => setVisible(current => selected ? current.filter(item => item !== key) : [...current, key])}
+            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition ${selected ? 'text-white' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}
+            style={selected ? { backgroundColor: config.color } : undefined}>
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: config.color }} />{config.label}
+          </button>;
+        })}
+      </div>
+    </div>
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-[230px] w-full touch-none" onMouseMove={onMove} onMouseLeave={() => { setHoverIndex(null); onHover(null); }}>
+      {[0, 0.25, 0.5, 0.75, 1].map(t => <line key={t} x1={left} x2={width - right} y1={top + plotH * t} y2={top + plotH * t} stroke="#94a3b8" strokeOpacity="0.28" />)}
+      {visible.includes('altitude') && series.altitude.some(v => v != null) && (() => {
+        const path = series.altitude.map((value, index) => value == null ? '' : `${index === 0 ? 'M' : 'L'} ${x(index)} ${y('altitude', value)}`).filter(Boolean).join(' ');
+        return <path d={`${path} L ${x(points.length - 1)} ${top + plotH} L ${x(0)} ${top + plotH} Z`} fill={TELEMETRY.altitude.color} fillOpacity="0.18" />;
+      })()}
+      {visible.map(key => {
+        const values = series[key];
+        const path = values.map((value, index) => value == null ? null : `${index === 0 || values[index - 1] == null ? 'M' : 'L'} ${x(index)} ${y(key, value)}`).filter(Boolean).join(' ');
+        return <path key={key} d={path} fill="none" stroke={TELEMETRY[key].color} strokeWidth={key === 'altitude' ? 1.5 : 2.2} strokeLinejoin="round" strokeLinecap="round" />;
+      })}
+      {hoverIndex != null && <>
+        <line x1={x(hoverIndex)} x2={x(hoverIndex)} y1={top} y2={top + plotH} stroke="#475569" strokeDasharray="4 4" />
+        {visible.map(key => { const value = series[key][hoverIndex]; return value == null ? null : <circle key={key} cx={x(hoverIndex)} cy={y(key, value)} r={4} fill={TELEMETRY[key].color} stroke="white" strokeWidth={1.5} />; })}
+      </>}
+      <text x={left} y={height - 5} fontSize="11" fill="#64748b">Inicio</text>
+      <text x={width - right} y={height - 5} textAnchor="end" fontSize="11" fill="#64748b">Fin</text>
+    </svg>
+    {hoverIndex != null && <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      {visible.map(key => { const value = series[key][hoverIndex]; return value == null ? null : <span key={key} style={{ color: TELEMETRY[key].color }} className="font-medium">{TELEMETRY[key].label}: {key === 'pace' ? formatPace(value) : Math.round(value)}{TELEMETRY[key].unit}</span>; })}
+      {points[hoverIndex]?.distance_m != null && <span className="text-gray-500">{(Number(points[hoverIndex].distance_m) / 1000).toFixed(2)} km</span>}
+    </div>}
+  </section>;
+}
 
 const TAB_CONFIG: { id: TabId; label: string; icon: typeof Activity }[] = [
   { id: 'resumen', label: 'Resumen', icon: Activity },
@@ -216,12 +300,14 @@ export function WorkoutDetailModal({
   const [view, setView] = useState<View>(isActivityOnly ? 'activity' : 'plan');
   const [activeTab, setActiveTab] = useState<TabId>('resumen');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setView(isActivityOnly ? 'activity' : 'plan');
       setActiveTab('resumen');
       setShowDeleteConfirm(false);
+      setActivePointIndex(null);
     }
   }, [isOpen, isActivityOnly]);
 
@@ -277,6 +363,11 @@ export function WorkoutDetailModal({
   const calories = data.actual_calories ?? null;
   const tss = data.actual_tss ?? null;
   const rpe = data.rpe ?? null;
+  const zoneBreakdown = data.zone_distributions_by_metric as Record<string, ZoneDistribution[]> | undefined;
+  const impulseEstimate = Boolean(data.summary?.impulse_is_estimate);
+  const intensityFactor = Number(data.summary?.intensity_factor ?? 0);
+  const gapPace = typeof data.summary?.gap_pace_sec_per_km === 'number' ? data.summary.gap_pace_sec_per_km : null;
+  const vam = typeof data.summary?.vam_m_per_hour === 'number' ? data.summary.vam_m_per_hour : null;
 
   const handleBackdrop = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -293,7 +384,7 @@ export function WorkoutDetailModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={handleBackdrop} role="dialog" aria-modal="true">
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden relative"
-        style={{ width: '80vw', height: '80vh', maxWidth: 1400, maxHeight: 900 }}>
+        style={{ width: '92vw', height: '90vh', maxWidth: 1500, maxHeight: 1100 }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
@@ -312,7 +403,7 @@ export function WorkoutDetailModal({
                 {data.name || 'Entrenamiento'}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {data.date || data.scheduled_date || '—'} · {sport} · {userRole === 'coach' ? 'Vista Coach' : 'Vista Atleta'}
+                {data.date || (data.scheduled_date as string | undefined) || '—'} · {sport} · {userRole === 'coach' ? 'Vista Coach' : 'Vista Atleta'}
                 {view === 'activity' && (isActivityOnly ? ` · Actividad${activitySource ? ` (${activitySource})` : ''}` : ' · Actividad realizada')}
               </p>
             </div>
@@ -414,10 +505,19 @@ export function WorkoutDetailModal({
               {/* RESUMEN */}
               {activeTab === 'resumen' && (
                 <div className="space-y-6">
+                  {gpsPoints.length > 1 && <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_1.4fr] gap-4 items-start">
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+                      <RouteMap points={gpsPoints} activePointIndex={activePointIndex} />
+                    </div>
+                    <UnifiedTelemetry points={gpsPoints} onHover={setActivePointIndex} />
+                  </div>}
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <KpiCard icon={MapPin} label="Distancia" value={`${distance.toFixed(1)} km`} color="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" />
                     <KpiCard icon={Timer} label="Duración" value={formatDuration(durationSec)} color="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" />
                     {avgPace != null && <KpiCard icon={Gauge} label="Pace medio" value={formatPace(avgPace)} sub="/km" color="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" />}
+                    {gapPace != null && <KpiCard icon={Gauge} label="GAP medio" value={formatPace(gapPace)} sub="/km ajustado por pendiente" color="bg-lime-50 dark:bg-lime-900/30 text-lime-700 dark:text-lime-300" />}
+                    {intensityFactor > 0 && <KpiCard icon={Activity} label="Factor de intensidad" value={intensityFactor.toFixed(2)} color="bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300" />}
+                    {vam != null && <KpiCard icon={Mountain} label="VAM" value={`${Math.round(vam)} m/h`} color="bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300" />}
                     {avgWatts != null && <KpiCard icon={Zap} label="Watts avg" value={`${Math.round(avgWatts)} W`} color="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" />}
                     {maxWatts != null && <KpiCard icon={Zap} label="Watts max" value={`${Math.round(maxWatts)} W`} color="bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" />}
                     {np != null && <KpiCard icon={Zap} label="Potencia norm." value={`${Math.round(np)} W`} color="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400" />}
@@ -425,12 +525,23 @@ export function WorkoutDetailModal({
                     {maxHr != null && <KpiCard icon={Heart} label="Pulso max" value={`${Math.round(maxHr)} bpm`} color="bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400" />}
                     {avgCadence != null && <KpiCard icon={TrendingUp} label="Cadencia avg" value={`${Math.round(avgCadence)} rpm`} color="bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400" />}
                     {elevGain != null && <KpiCard icon={Mountain} label="Desnivel +" value={`${Math.round(elevGain)} m`} color="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" />}
+                    {elevLoss != null && <KpiCard icon={Mountain} label="Desnivel −" value={`${Math.round(elevLoss)} m`} color="bg-slate-50 dark:bg-slate-900/30 text-slate-600 dark:text-slate-400" />}
                     {calories != null && <KpiCard icon={Activity} label="Calorías" value={`${Math.round(calories)} kcal`} color="bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" />}
-                    {tss != null && <KpiCard icon={Activity} label="TSS" value={tss.toFixed(0)} color="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />}
+                    {data.actual_impulse != null
+                      ? <KpiCard icon={Activity} label="Impulse" value={`${Math.round(data.actual_impulse)}${impulseEstimate ? ' est.' : ''}`} color="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />
+                      : tss != null && !isActivityOnly && <KpiCard icon={Activity} label="TSS" value={tss.toFixed(0)} color="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />}
                     {rpe != null && <KpiCard icon={Activity} label="RPE" value={`${rpe}/10`} color="bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400" />}
                   </div>
 
                   {data.zone_distribution && data.zone_distribution.length > 0 && <ZoneBar zones={data.zone_distribution} />}
+                  {zoneBreakdown && Object.entries({ hr: 'Zonas de pulso', pace: 'Zonas de pace', power: 'Zonas de potencia' }).map(([key, label]) => {
+                    const zones = zoneBreakdown[key];
+                    return zones?.length ? <div key={key} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+                      <div className="mb-3 flex items-center justify-between"><h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{label}</h4><span className="text-xs text-gray-400">Pasaporte biológico</span></div>
+                      <ZoneBar zones={zones} />
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">{zones.map(zone => <span key={zone.zone}>Z{zone.zone} · {Math.floor((zone.actual_seconds || 0) / 60)}m · {(zone.actual_percent || 0).toFixed(0)}%</span>)}</div>
+                    </div> : null;
+                  })}
 
                   {paceData.length > 0 && (
                     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
@@ -453,6 +564,22 @@ export function WorkoutDetailModal({
                         color="#ef4444" unit=" bpm" averageLine formatValue={(v) => Math.round(v).toString()} height={180} />
                     </div>
                   )}
+                  {data.splits && data.splits.length > 0 && <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                    <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700"><h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Parciales y vueltas</h4><p className="mt-0.5 text-xs text-gray-500">Datos disponibles de la actividad sincronizada</p></div>
+                    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-xs">
+                      <thead className="bg-gray-50 text-gray-500 dark:bg-gray-900/50 dark:text-gray-400"><tr>{['#', 'Distancia', 'Tiempo', 'Pace', 'FC prom. / máx.', 'Potencia prom. / máx.', 'Cadencia', 'Desnivel +'].map(label => <th key={label} className="px-3 py-2 text-right first:text-left">{label}</th>)}</tr></thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">{data.splits.map((split, index) => <tr key={`${split.index ?? index}-${index}`} className="text-gray-700 dark:text-gray-200">
+                        <td className="px-3 py-2 font-semibold">{split.label || `Lap ${split.index ?? index + 1}`}</td>
+                        <td className="px-3 py-2 text-right">{split.distance_km != null ? `${split.distance_km.toFixed(2)} km` : '—'}</td>
+                        <td className="px-3 py-2 text-right">{split.duration_seconds != null ? formatDuration(split.duration_seconds) : '—'}</td>
+                        <td className="px-3 py-2 text-right">{split.avg_pace_sec_per_km != null ? `${formatPace(split.avg_pace_sec_per_km)} /km` : '—'}</td>
+                        <td className="px-3 py-2 text-right">{split.avg_heart_rate != null ? `${Math.round(split.avg_heart_rate)} / ${split.max_heart_rate != null ? Math.round(split.max_heart_rate) : '—'} bpm` : '—'}</td>
+                        <td className="px-3 py-2 text-right">{split.avg_power_watts != null ? `${Math.round(split.avg_power_watts)} / ${split.max_power_watts != null ? Math.round(split.max_power_watts) : '—'} W` : '—'}</td>
+                        <td className="px-3 py-2 text-right">{split.avg_cadence != null ? `${Math.round(split.avg_cadence)} rpm` : '—'}</td>
+                        <td className="px-3 py-2 text-right">{split.elevation_gain_m != null ? `${Math.round(split.elevation_gain_m)} m` : '—'}</td>
+                      </tr>)}</tbody>
+                    </table></div>
+                  </section>}
                 </div>
               )}
 

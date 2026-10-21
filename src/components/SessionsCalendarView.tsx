@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { TrainingSession, supabase } from '../lib/supabase';
-import { ChevronLeft, ChevronRight, Clock, TrendingUp, Zap, Activity, Gauge, Plus, BookOpen, Dumbbell, CreditCard as Edit2, Trash2, Copy, CopyCheck, X, BarChart2, Tag as TagIcon, MoreVertical } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, TrendingUp, Zap, Activity, Gauge, Plus, BookOpen, CreditCard as Edit2, Trash2, Copy, CopyCheck, X, BarChart2, Tag as TagIcon, MoreVertical } from 'lucide-react';
 import TrainingTypeModal from './TrainingTypeModal';
 import ScheduleWorkoutModal from './ScheduleWorkoutModal';
 import WeeklyAtpDrawer from './WeeklyAtpDrawer';
@@ -12,6 +12,7 @@ import { getDifficultyClasses, getDifficultyLabel, SSRResult } from '../lib/sess
 import { WeeklySummaryData } from '../lib/weeklySummary';
 import { WorkoutDetailModal } from './detail/WorkoutDetailModal';
 import { WorkoutData } from '../types/workoutDetail';
+import { hubSessionAction } from '../lib/hubApi';
 
 interface SessionsCalendarViewProps {
   sessions: TrainingSession[];
@@ -50,6 +51,72 @@ function formatWorkoutDuration(minutes?: number | null) {
 const WORKOUT_STEP_COLORS: Record<string, string> = {
   warmup: 'bg-amber-400', steady: 'bg-emerald-500', interval: 'bg-primary-purple', recovery: 'bg-sky-400', cooldown: 'bg-violet-300',
 };
+
+function parseRecord(value: unknown): Record<string, any> | null {
+  if (typeof value === 'string') { try { value = JSON.parse(value); } catch { return null; } }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : null;
+}
+
+function passportZoneRows(passport: Record<string, any>, metric: 'hr' | 'power' | 'pace'): { zone: number; name: string; min: number; max: number; color: string | undefined }[] {
+  const training = parseRecord(passport.training_zones);
+  const preferred = training?.default_display === '7' ? 7 : 5;
+  const parseRows = (rows: unknown) => {
+    if (typeof rows === 'string') { try { rows = JSON.parse(rows); } catch { return []; } }
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row: any, index) => {
+      let min = metric === 'hr' ? row.min_bpm ?? row.min : metric === 'power' ? row.min_watts ?? row.min : row.min_sec_per_km ?? row.min_pace ?? row.pace_min ?? row.min ?? row.low;
+      let max = metric === 'hr' ? row.max_bpm ?? row.max : metric === 'power' ? row.max_watts ?? row.max : row.max_sec_per_km ?? row.max_pace ?? row.pace_max ?? row.max ?? row.high;
+      if (metric === 'pace') {
+        const toSeconds = (v: unknown) => typeof v === 'string' && v.includes(':') ? v.split(':').map(Number).reduce((m, s) => m * 60 + s) : Number(v) * (Number(v) > 0 && Number(v) < 30 ? 60 : 1);
+        min = toSeconds(min); max = toSeconds(max);
+      }
+      const low = Number(min), high = Number(max);
+      return Number.isFinite(low) && Number.isFinite(high) ? { zone: Number(row.zone ?? index + 1), name: String(row.name || `Z${index + 1}`), min: Math.min(low, high), max: Math.max(low, high), color: typeof row.color === 'string' ? row.color : undefined } : null;
+    }).filter((row): row is { zone: number; name: string; min: number; max: number; color: string | undefined } => row !== null);
+  };
+  const zoneSet = parseRecord(training?.[`zones${preferred}`]) || parseRecord(training?.zones5) || parseRecord(training?.zones7);
+  const flat = training?.[`zones${preferred}_${metric}`] ?? training?.[`${metric}_zones_${preferred}`] ?? training?.[`${metric}_zones${preferred}`]
+    ?? (metric === 'hr' ? passport.hr_zones_json : metric === 'power' ? passport.power_zones_json : passport.pace_zones_json);
+  const aliases = metric === 'hr' ? ['hr', 'heart_rate'] : metric === 'power' ? ['power', 'watts'] : ['pace', 'running_pace'];
+  return parseRows(flat ?? aliases.map(alias => zoneSet?.[alias]).find(Boolean));
+}
+
+function calculateActivityZones(values: number[], times: number[], zones: ReturnType<typeof passportZoneRows>) {
+  if (!values.length || !times.length || !zones.length) return [];
+  const seconds = new Map<number, number>(zones.map(zone => [zone.zone, 0]));
+  const count = Math.min(values.length, times.length);
+  for (let i = 0; i < count - 1; i++) {
+    const value = Number(values[i]); const delta = Number(times[i + 1]) - Number(times[i]);
+    if (!Number.isFinite(value) || !Number.isFinite(delta) || delta <= 0 || delta > 30) continue;
+    const zone = zones.find(candidate => value >= candidate.min && value <= candidate.max);
+    if (zone) seconds.set(zone.zone, (seconds.get(zone.zone) || 0) + delta);
+  }
+  const total = [...seconds.values()].reduce((sum, value) => sum + value, 0);
+  return total ? zones.map(zone => ({ zone: zone.zone, name: zone.name, color: zone.color, actual_seconds: seconds.get(zone.zone) || 0, actual_percent: (seconds.get(zone.zone) || 0) / total * 100 })) : [];
+}
+
+function gradeCost(grade: number) {
+  const g = Math.max(-0.35, Math.min(0.45, grade));
+  return 155.4 * g ** 5 - 30.4 * g ** 4 - 43.3 * g ** 3 + 46.3 * g ** 2 + 19.5 * g + 3.6;
+}
+
+function calculateGapPace(times: number[], distances: number[], altitudes: number[]) {
+  const length = Math.min(times.length, distances.length, altitudes.length);
+  if (length < 3) return null;
+  const step = Math.max(1, Math.floor(length / 250));
+  let weightedPace = 0, totalDistance = 0;
+  for (let end = step; end < length; end += step) {
+    const start = end - step;
+    const distance = distances[end] - distances[start];
+    const elapsed = times[end] - times[start];
+    if (distance < 5 || elapsed <= 0) continue;
+    const grade = (altitudes[end] - altitudes[start]) / distance;
+    if (!Number.isFinite(grade)) continue;
+    weightedPace += elapsed / (distance / 1000) * gradeCost(0) / Math.max(0.5, gradeCost(grade)) * distance;
+    totalDistance += distance;
+  }
+  return totalDistance ? weightedPace / totalDistance : null;
+}
 
 function WorkoutProfile({ steps, compact = false }: { steps: WorkoutStep[]; compact?: boolean }) {
   if (!steps.length) return null;
@@ -320,8 +387,8 @@ export default function SessionsCalendarView({
       date: w.scheduled_date,
       sport: w.sport,
       distance: (hubData?.actual_distance_km as number) ?? null,
-      duration: w.actual_duration_minutes ? w.actual_duration_minutes * 60 : null,
-      duration_seconds: w.actual_duration_minutes ? w.actual_duration_minutes * 60 : null,
+      duration: w.actual_duration_minutes ? w.actual_duration_minutes * 60 : undefined,
+      duration_seconds: w.actual_duration_minutes ? w.actual_duration_minutes * 60 : undefined,
       distance_km: (hubData?.actual_distance_km as number) ?? null,
       actual_duration_minutes: w.actual_duration_minutes ?? null,
       actual_distance_km: (hubData?.actual_distance_km as number) ?? null,
@@ -360,7 +427,91 @@ export default function SessionsCalendarView({
       summary: hubData?.summary as Record<string, number | string | null> | undefined,
     };
     setDetailWorkout(data);
-  }, []);
+    // Imported activities are analyzed from the Hub's canonical streams. Keep
+    // the Hub activity UUID (hub_data.id), and send both existing auth headers
+    // through hubSessionAction rather than relying on the calendar cache.
+    if (isExternalActivity && hubData?.id && hubAthleteId) {
+      try {
+        const params = { external_activity_id: String(hubData.id), athlete_id: hubAthleteId };
+        const [analysis, streamResult] = await Promise.all([
+          hubSessionAction('get-session-analysis', params),
+          hubSessionAction('get-session-timeseries', params),
+        ]);
+        const series = streamResult?.timeseries || {};
+        const latlng: unknown[] = Array.isArray(series.latlng) ? series.latlng : [];
+        const times: number[] = Array.isArray(series.time) ? series.time : [];
+        const distances: number[] = Array.isArray(series.distance) ? series.distance : [];
+        const altitudes: number[] = Array.isArray(series.altitude) ? series.altitude : [];
+        const speeds: number[] = Array.isArray(series.speed) ? series.speed : [];
+        const hrs: number[] = Array.isArray(series.heartrate) ? series.heartrate : [];
+        const powers: number[] = Array.isArray(series.power) ? series.power : [];
+        const cadences: number[] = Array.isArray(series.cadence) ? series.cadence : [];
+        const length = Math.max(latlng.length, times.length, distances.length, altitudes.length, speeds.length, hrs.length, powers.length, cadences.length);
+        const gpsTrack = Array.from({ length }, (_, index) => {
+          const point = latlng[index];
+          const pair = Array.isArray(point) ? point : typeof point === 'string' ? point.split(',').map(Number) : [];
+          const lat = Number(pair[0]); const lng = Number(pair[1]);
+          return {
+            lat, lng,
+            altitude_m: Number.isFinite(altitudes[index]) ? altitudes[index] : null,
+            timestamp: Number.isFinite(times[index]) ? String(times[index]) : null,
+            distance_m: Number.isFinite(distances[index]) ? distances[index] : null,
+            speed_kmh: Number.isFinite(speeds[index]) ? speeds[index] * 3.6 : null,
+            pace: Number.isFinite(speeds[index]) && speeds[index] > 0 ? 1000 / speeds[index] : null,
+            heart_rate: Number.isFinite(hrs[index]) ? hrs[index] : null,
+            power_watts: Number.isFinite(powers[index]) ? powers[index] : null,
+            cadence: Number.isFinite(cadences[index]) ? cadences[index] : null,
+          };
+        }).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+        const metrics = analysis?.metrics || {};
+        const passport = analysis?.biological_passport || {};
+        const paceValues = speeds.map(speed => speed > 0 ? 1000 / speed : 0);
+        const zonesByMetric = {
+          hr: calculateActivityZones(hrs, times, passportZoneRows(passport, 'hr')),
+          power: calculateActivityZones(powers, times, passportZoneRows(passport, 'power')),
+          pace: calculateActivityZones(paceValues, times, passportZoneRows(passport, 'pace')),
+        };
+        const impulseZones = zonesByMetric.hr.length ? zonesByMetric.hr : zonesByMetric.power.length ? zonesByMetric.power : zonesByMetric.pace;
+        const impulseZoneMax = Math.max(1, ...impulseZones.map(zone => zone.zone));
+        const estimatedImpulse = impulseZones.length ? impulseZones.reduce((sum, zone) => sum + (zone.actual_seconds || 0) / 60 * zone.zone / impulseZoneMax, 0) : null;
+        const explicitImpulse = metrics.impulse ?? metrics.session_impulse ?? null;
+        const activityDurationSeconds = Number(w.actual_duration_minutes ?? hubData?.actual_duration_minutes ?? 0) * 60;
+        const avgHr = Number(hubData?.actual_avg_hr ?? metrics.avg_hr ?? (hrs.length ? hrs.reduce((sum, value) => sum + value, 0) / hrs.length : 0));
+        const avgPower = Number(hubData?.actual_avg_power_watts ?? metrics.avg_power ?? (powers.length ? powers.reduce((sum, value) => sum + value, 0) / powers.length : 0));
+        const thresholdPower = Number(passport.ftp_watts ?? passport.critical_power ?? 0);
+        const thresholdHr = Number(passport.lt2_hr ?? 0);
+        const rawThresholdPace = passport.running_threshold_pace;
+        const thresholdPaceSeconds = typeof rawThresholdPace === 'string' && rawThresholdPace.includes(':')
+          ? rawThresholdPace.split(':').map(Number).reduce((minutes, seconds) => minutes * 60 + seconds)
+          : Number(rawThresholdPace) * (Number(rawThresholdPace) > 0 && Number(rawThresholdPace) < 30 ? 60 : 1);
+        const averageSpeed = speeds.length ? speeds.filter(value => value > 0).reduce((sum, value, _, array) => sum + value / array.length, 0) : 0;
+        const intensityFactor = Number(metrics.intensity_factor ?? metrics.if ?? 0)
+          || (avgPower > 0 && thresholdPower > 0 ? avgPower / thresholdPower : 0)
+          || (avgHr > 0 && thresholdHr > 0 ? avgHr / thresholdHr : 0)
+          || (averageSpeed > 0 && thresholdPaceSeconds > 0 ? averageSpeed / (1000 / thresholdPaceSeconds) : 0);
+        const gapPace = calculateGapPace(times, distances, altitudes);
+        const vam = activityDurationSeconds > 0 ? Number(hubData?.actual_elevation_gain_m || analysis?.session?.elevation_gain_m || 0) / activityDurationSeconds * 3600 : null;
+        setDetailWorkout(previous => previous ? {
+          ...previous,
+          gps_track: gpsTrack.length ? gpsTrack : previous.gps_track,
+          map: gpsTrack.length ? gpsTrack : previous.map,
+          heart_rate: hrs,
+          watts: powers,
+          cadence: cadences,
+          elevation: altitudes,
+          actual_avg_hr: previous.actual_avg_hr ?? metrics.avg_hr ?? null,
+          actual_max_hr: previous.actual_max_hr ?? metrics.max_hr ?? null,
+          actual_avg_power_watts: previous.actual_avg_power_watts ?? metrics.avg_power ?? null,
+          normalized_power_watts: metrics.normalized_power_watts ?? previous.normalized_power_watts ?? null,
+          actual_impulse: explicitImpulse ?? previous.actual_impulse ?? estimatedImpulse,
+          zone_distributions_by_metric: zonesByMetric,
+          summary: { ...(previous.summary || {}), ...(analysis?.session || {}), ...(metrics || {}), intensity_factor: intensityFactor || null, gap_pace_sec_per_km: gapPace, vam_m_per_hour: vam, biological_passport_date: passport.measurement_date ?? null, impulse_is_estimate: explicitImpulse == null && previous.actual_impulse == null && estimatedImpulse != null },
+        } : previous);
+      } catch (err) {
+        console.error('Error loading Hub activity analysis:', err);
+      }
+    }
+  }, [hubAthleteId]);
 
   const handleEditFromDetail = useCallback(() => {
     if (detailWorkoutSource) {
@@ -557,7 +708,7 @@ export default function SessionsCalendarView({
     return {
       total: periodSessions.length,
       completed: periodSessions.filter(s => s.status === 'completed').length,
-      pending: periodSessions.filter(s => s.status === 'pending').length,
+      pending: periodSessions.filter(s => s.status !== 'completed').length,
       totalHours: periodSessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0) / 60,
     };
   }, [sessions, viewType, currentDate]);

@@ -3,6 +3,7 @@ import { GpsPoint } from '../../types/workoutDetail';
 
 interface RouteMapProps {
   points: GpsPoint[];
+  activePointIndex?: number | null;
 }
 
 type LayerType = 'pace' | 'heart_rate' | 'power_watts' | 'cadence';
@@ -23,7 +24,7 @@ function intensityColor(t: number): string {
   return '#ef4444';
 }
 
-export function RouteMap({ points }: RouteMapProps) {
+export function RouteMap({ points, activePointIndex = null }: RouteMapProps) {
   const [activeLayer, setActiveLayer] = useState<LayerType | null>(null);
 
   const bounds = useMemo(() => {
@@ -158,6 +159,16 @@ export function RouteMap({ points }: RouteMapProps) {
               <circle cx={segments[0]?.x1 ?? 0} cy={segments[0]?.y1 ?? 0} r={6} fill="#10b981" stroke="white" strokeWidth={2} />
               <circle cx={segments[segments.length - 1]?.x2 ?? 0} cy={segments[segments.length - 1]?.y2 ?? 0} r={6} fill="#ef4444" stroke="white" strokeWidth={2} />
             </>
+          )}
+          {activePointIndex != null && points[activePointIndex] && (
+            <circle
+              cx={((points[activePointIndex].lng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * 800}
+              cy={500 - ((points[activePointIndex].lat - bounds.minLat) / (bounds.maxLat - bounds.minLat)) * 500}
+              r={10}
+              fill="#fdda36"
+              stroke="#514163"
+              strokeWidth={4}
+            />
           )}
         </svg>
         {activeLayer && layerValues && (

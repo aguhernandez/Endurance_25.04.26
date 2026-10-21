@@ -4,6 +4,7 @@ export interface GpsPoint {
   altitude_m?: number | null;
   timestamp?: string | null;
   speed_kmh?: number | null;
+  pace?: number | null;
   heart_rate?: number | null;
   power_watts?: number | null;
   cadence?: number | null;
@@ -67,7 +68,7 @@ export interface WorkoutData {
   elevation?: number[];
   elevation_m?: number[];
   altitude?: number[];
-  summary?: Record<string, number | string | null>;
+  summary?: Record<string, number | string | boolean | null>;
   zone_distribution?: ZoneDistribution[];
   activity_log?: ActivityLogEntry[];
   // Hub completion fields
