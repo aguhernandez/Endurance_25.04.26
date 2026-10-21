@@ -5,6 +5,8 @@ import { AuthProvider } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import App from './App.tsx';
 import './index.css';
+import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
