@@ -51,8 +51,7 @@ function UnifiedTelemetry({ points, onHover }: { points: GpsPoint[]; onHover: (i
   }), [points]);
   const available = (Object.keys(TELEMETRY) as TelemetryKey[]).filter(key => series[key].some(v => v != null && Number.isFinite(v)));
   useEffect(() => {
-    const defaults = (['pace', 'altitude'] as TelemetryKey[]).filter(key => available.includes(key));
-    setVisible(defaults.length ? defaults : available.slice(0, 2));
+    setVisible(available);
   }, [available.join('|')]);
   const width = 1000, height = 290, left = 34, right = 16, top = 18, bottom = 28;
   const plotW = width - left - right, plotH = height - top - bottom;
@@ -229,6 +228,26 @@ function ZoneBar({ zones }: { zones: { zone: number; name: string; actual_percen
       </div>
     </div>
   );
+}
+
+function ActivityZonePanel({ zones }: { zones: Record<string, ZoneDistribution[]> }) {
+  const options = [
+    { key: 'hr', label: 'Pulso' },
+    { key: 'pace', label: 'Pace' },
+    { key: 'power', label: 'Watts' },
+  ].filter(option => zones[option.key]?.length);
+  const [active, setActive] = useState(options[0]?.key || 'hr');
+  useEffect(() => { if (!options.some(option => option.key === active)) setActive(options[0]?.key || 'hr'); }, [active, options.map(option => option.key).join('|')]);
+  const selected = zones[active] || [];
+  if (!options.length) return null;
+  return <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tiempo en zonas</h3><p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">Zonas personales del Pasaporte Biológico</p></div><div className="flex rounded-lg bg-gray-100 p-1 dark:bg-gray-900">{options.map(option => <button key={option.key} onClick={() => setActive(option.key)} className={`rounded-md px-2 py-1 text-[11px] font-medium ${active === option.key ? 'bg-white text-gray-900 shadow dark:bg-gray-700 dark:text-white' : 'text-gray-500'}`}>{option.label}</button>)}</div></div>
+    <div className="space-y-2">{selected.map((zone, index) => { const seconds = Number(zone.actual_seconds || 0); const pct = Number(zone.actual_percent || 0); const color = zone.color || ['#60a5fa', '#34d399', '#facc15', '#fb923c', '#f87171', '#c084fc', '#f472b6'][index % 7]; return <div key={`${active}-${zone.zone}`}><div className="mb-1 flex justify-between gap-3 text-xs"><span className="font-medium text-gray-700 dark:text-gray-200">Z{zone.zone} <span className="font-normal text-gray-400">{zone.name}</span></span><span className="shrink-0 text-gray-500">{formatDuration(seconds)} · {pct.toFixed(0)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700"><div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, backgroundColor: color }} /></div></div>; })}</div>
+  </section>;
+}
+
+function ActivitySummaryMetric({ label, value, accent = '' }: { label: string; value: string; accent?: string }) {
+  return <div className="flex items-baseline justify-between gap-2 border-b border-gray-100 py-2 last:border-0 dark:border-gray-700"><span className="text-xs text-gray-500 dark:text-gray-400">{label}</span><span className={`text-sm font-semibold text-gray-800 dark:text-gray-100 ${accent}`}>{value}</span></div>;
 }
 
 function StepList({ steps }: { steps: WorkoutStep[] }) {
@@ -484,7 +503,26 @@ export function WorkoutDetailModal({
           )}
 
           {/* ACTIVITY VIEW */}
-          {view === 'activity' && (
+        {view === 'activity' && isActivityOnly && (
+          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(300px,3fr)]">
+            <main className="min-w-0 space-y-4">
+              {gpsPoints.length > 1 && <section className="overflow-hidden rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"><RouteMap points={gpsPoints} activePointIndex={activePointIndex} /></section>}
+              {gpsPoints.length > 1 && <UnifiedTelemetry points={gpsPoints} onHover={setActivePointIndex} />}
+              {zoneBreakdown && <ActivityZonePanel zones={zoneBreakdown} />}
+              {data.splits && data.splits.length > 0 && <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700"><h3 className="text-sm font-semibold text-gray-800 dark:text-white">Parciales y vueltas</h3><p className="mt-0.5 text-[11px] text-gray-500">Datos de la actividad y zonas del Pasaporte Biológico</p></div>
+                <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-xs"><thead className="bg-gray-50 text-gray-500 dark:bg-gray-900/50 dark:text-gray-400"><tr>{['#', 'Distancia', 'Tiempo', 'Pace', 'FC prom. / máx.', 'Potencia prom. / máx.', 'Cadencia', 'Desnivel +'].map(label => <th key={label} className="px-3 py-2 text-right first:text-left">{label}</th>)}</tr></thead><tbody className="divide-y divide-gray-100 dark:divide-gray-700">{data.splits.map((split, index) => <tr key={`${split.index ?? index}-${index}`} className="text-gray-700 dark:text-gray-200"><td className="px-3 py-2 font-semibold">{split.label || `Lap ${split.index ?? index + 1}`}</td><td className="px-3 py-2 text-right">{split.distance_km != null ? `${split.distance_km.toFixed(2)} km` : '—'}</td><td className="px-3 py-2 text-right">{split.duration_seconds != null ? formatDuration(split.duration_seconds) : '—'}</td><td className="px-3 py-2 text-right">{split.avg_pace_sec_per_km != null ? `${formatPace(split.avg_pace_sec_per_km)} /km` : '—'}</td><td className="px-3 py-2 text-right">{split.avg_heart_rate != null ? `${Math.round(split.avg_heart_rate)} / ${split.max_heart_rate != null ? Math.round(split.max_heart_rate) : '—'} bpm` : '—'}</td><td className="px-3 py-2 text-right">{split.avg_power_watts != null ? `${Math.round(split.avg_power_watts)} / ${split.max_power_watts != null ? Math.round(split.max_power_watts) : '—'} W` : '—'}</td><td className="px-3 py-2 text-right">{split.avg_cadence != null ? `${Math.round(split.avg_cadence)} rpm` : '—'}</td><td className="px-3 py-2 text-right">{split.elevation_gain_m != null ? `${Math.round(split.elevation_gain_m)} m` : '—'}</td></tr>)}</tbody></table></div>
+              </section>}
+            </main>
+            <aside className="min-w-0 space-y-4">
+              <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-white">Métricas principales</h3><ActivitySummaryMetric label="Distancia" value={`${distance.toFixed(2)} km`} /><ActivitySummaryMetric label="Tiempo" value={formatDuration(durationSec)} /><ActivitySummaryMetric label="Pace promedio" value={avgPace ? `${formatPace(avgPace)} /km` : '—'} /><ActivitySummaryMetric label="GAP promedio" value={gapPace ? `${formatPace(gapPace)} /km` : '—'} /><ActivitySummaryMetric label="Desnivel +" value={elevGain != null ? `${Math.round(elevGain)} m` : '—'} /><ActivitySummaryMetric label="Desnivel −" value={elevLoss != null ? `${Math.round(elevLoss)} m` : '—'} /></section>
+              <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"><h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-white">Carga y esfuerzo</h3><ActivitySummaryMetric label="Impulse" value={data.actual_impulse != null ? `${Math.round(data.actual_impulse)}${impulseEstimate ? ' est.' : ''} pts` : '—'} accent="text-violet-600 dark:text-violet-300" /><ActivitySummaryMetric label="IF" value={intensityFactor > 0 ? intensityFactor.toFixed(2) : '—'} /><ActivitySummaryMetric label="VAM" value={vam != null ? `${Math.round(vam)} m/h` : '—'} /><ActivitySummaryMetric label="Cadencia promedio" value={avgCadence != null ? `${Math.round(avgCadence)} spm` : '—'} /><ActivitySummaryMetric label="Frecuencia cardíaca" value={avgHr != null ? `${Math.round(avgHr)} / ${maxHr != null ? Math.round(maxHr) : '—'} bpm` : '—'} /><ActivitySummaryMetric label="Potencia promedio" value={avgWatts != null ? `${Math.round(avgWatts)} W` : '—'} /><ActivitySummaryMetric label="Potencia máxima" value={maxWatts != null ? `${Math.round(maxWatts)} W` : '—'} /></section>
+              {data.actual_calories != null && <p className="px-1 text-xs text-gray-500">{Math.round(data.actual_calories)} kcal{activitySource ? ` · ${activitySource}` : ''}</p>}
+            </aside>
+          </div>
+        )}
+
+        {view === 'activity' && !isActivityOnly && (
             <>
               {/* Tab Navigation */}
               <div className="flex items-center gap-1 mb-4 overflow-x-auto">
