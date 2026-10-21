@@ -432,17 +432,69 @@ export default function SessionsCalendarView({
       summary: hubData?.summary as Record<string, number | string | null> | undefined,
     };
     setDetailWorkout(data);
+    const cachedTrack = Array.isArray(hubData?.gps_track) ? hubData.gps_track as Record<string, any>[] : [];
+    const cachedStartTime = String(w.completed_at || hubData?.start_time || hubData?.started_at || w.scheduled_date || data.date || new Date().toISOString());
+    const cachedStartEpoch = Date.parse(cachedStartTime);
+    const cachedRows = (read: (point: Record<string, any>) => unknown) => cachedTrack.flatMap(point => {
+      const offset = Number(point.timestamp ?? point.time ?? 0);
+      const value = Number(read(point));
+      const timestamp = cachedStartEpoch + offset * 1000;
+      return Number.isFinite(value) && Number.isFinite(timestamp) ? [{ timestamp, value }] : [];
+    });
+    const cachedRoute = cachedTrack
+      .map(point => ({ latitude: Number(point.lat ?? point.latitude), longitude: Number(point.lng ?? point.longitude), altitude_m: Number(point.altitude_m ?? point.altitude) }))
+      .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+    const cachedSeries: Record<string, { timestamp: number; value: number }[]> = {};
+    const cachedFields: Array<[string, (point: Record<string, any>) => unknown]> = [
+      ['heartrate', point => point.heart_rate ?? point.heartrate],
+      ['power', point => point.power_watts ?? point.watts ?? point.power],
+      ['cadence', point => point.cadence],
+      ['altitude', point => point.altitude_m ?? point.altitude],
+      ['distance', point => point.distance_m ?? point.distance],
+      ['speed', point => point.speed_kmh != null ? Number(point.speed_kmh) / 3.6 : point.speed_mps ?? (point.speed != null ? Number(point.speed) / 3.6 : null)],
+    ];
+    for (const [key, read] of cachedFields) {
+      const rows = cachedRows(read);
+      if (rows.length) cachedSeries[key] = rows;
+    }
+    // The synced calendar record already includes the Hub's enriched GPS
+    // track. Render it immediately so a bridge/network issue cannot turn a
+    // mapped activity into an empty detail view.
+    if (isExternalActivity && cachedTrack.length) {
+      setDetailActivityAnalysis({
+        activity: {
+          id: String(hubData?.id || w.hub_workout_id || w.id), source: String(hubData?.source || detailActivitySource || 'Hub').toLowerCase(),
+          sport_type: String(hubData?.sport_type || w.sport || 'activity').toLowerCase(), name: String(hubData?.name || w.name || 'Activity'),
+          start_time: cachedStartTime, local_date: String(hubData?.local_date || w.scheduled_date || ''),
+          duration_seconds: Number(hubData?.duration_seconds || data.duration_seconds || 0), elapsed_time_seconds: Number(hubData?.elapsed_time_seconds || hubData?.duration_seconds || data.duration_seconds || 0),
+          distance_meters: Number(hubData?.distance_meters || Number(hubData?.actual_distance_km || 0) * 1000), elevation_gain_meters: Number(hubData?.elevation_gain_meters ?? hubData?.actual_elevation_gain_m ?? 0),
+          average_speed_mps: Number(hubData?.average_speed_mps || Number(hubData?.actual_avg_speed_kmh || 0) / 3.6), max_speed_mps: null,
+          average_heartrate: hubData?.average_heartrate ?? hubData?.actual_avg_hr ?? null, max_heartrate: hubData?.max_heartrate ?? hubData?.actual_max_hr ?? null,
+          has_heartrate: Boolean(cachedSeries.heartrate?.length), average_watts: hubData?.average_watts ?? hubData?.actual_avg_power_watts ?? null,
+          max_watts: hubData?.max_watts ?? hubData?.actual_max_power_watts ?? null, weighted_avg_watts: hubData?.weighted_avg_power ?? hubData?.normalized_power_watts ?? null,
+          has_power: Boolean(cachedSeries.power?.length), average_cadence: hubData?.average_cadence ?? hubData?.actual_avg_cadence ?? null,
+          suffer_score: null, calories: hubData?.calories ?? hubData?.actual_calories ?? null, device_name: String(hubData?.device_name || detailActivitySource || ''),
+          time_in_zones: hubData?.time_in_zones ?? null, fused_activity_id: null,
+          raw_data: { actual_impulse: w.actual_impulse ?? hubData?.actual_impulse }, streams_fetched: true,
+          map_polyline: hubData?.map_polyline ?? null, map_summary_polyline: hubData?.map_summary_polyline ?? null,
+          splits_metric: hubData?.splits ?? hubData?.splits_metric ?? null, splits_standard: hubData?.splits_standard ?? null,
+        },
+        wearableDetails: { series: cachedSeries, route: cachedRoute, window: { start_time: cachedStartTime }, session_impulse: w.actual_impulse ?? hubData?.actual_impulse ?? null, average_heartrate: hubData?.actual_avg_hr ?? null, average_watts: hubData?.actual_avg_power_watts ?? null, elevation_gain_m: hubData?.actual_elevation_gain_m ?? null },
+        passport: null,
+      });
+    }
     // Imported activities are analyzed from the Hub's canonical streams. Keep
     // the Hub activity UUID (hub_data.id), and send both existing auth headers
     // through hubSessionAction rather than relying on the calendar cache.
     if (isExternalActivity && hubData?.id && hubAthleteId) {
       try {
         const params = { external_activity_id: String(hubData.id), athlete_id: hubAthleteId };
-        const [analysis, streamResult] = await Promise.all([
+        const [analysisResult, streamResult] = await Promise.allSettled([
           hubSessionAction('get-session-analysis', params),
           hubSessionAction('get-session-timeseries', params),
         ]);
-        const series = streamResult?.timeseries || {};
+        const analysis = analysisResult.status === 'fulfilled' ? analysisResult.value : null;
+        const series = streamResult.status === 'fulfilled' ? streamResult.value?.timeseries || {} : {};
         const latlng: unknown[] = Array.isArray(series.latlng) ? series.latlng : [];
         const times: number[] = Array.isArray(series.time) ? series.time : [];
         const distances: number[] = Array.isArray(series.distance) ? series.distance : [];
@@ -497,13 +549,13 @@ export default function SessionsCalendarView({
           || (averageSpeed > 0 && thresholdPaceSeconds > 0 ? averageSpeed / (1000 / thresholdPaceSeconds) : 0);
         const gapPace = calculateGapPace(times, distances, altitudes);
         const vam = activityDurationSeconds > 0 ? Number(hubData?.actual_elevation_gain_m || analysis?.session?.elevation_gain_m || 0) / activityDurationSeconds * 3600 : null;
-        const startTime = String(session.start_time || w.scheduled_date || data.date || new Date().toISOString());
+        const startTime = String(session.start_time || cachedStartTime);
         const startEpoch = Date.parse(startTime);
         const toRows = (values: number[]) => values.map((value, index) => ({
           timestamp: startEpoch + Number(times[index] || 0) * 1000,
           value: Number(value),
         })).filter(row => Number.isFinite(row.timestamp) && Number.isFinite(row.value));
-        const wearableSeries: Record<string, { timestamp: number; value: number }[]> = {};
+        const wearableSeries: Record<string, { timestamp: number; value: number }[]> = { ...cachedSeries };
         if (hrs.length) wearableSeries.heartrate = toRows(hrs);
         if (powers.length) wearableSeries.power = toRows(powers);
         if (cadences.length) wearableSeries.cadence = toRows(cadences);
@@ -535,7 +587,7 @@ export default function SessionsCalendarView({
         };
         const wearableDetails = {
           series: wearableSeries,
-          route: gpsTrack.map(point => ({ latitude: point.lat, longitude: point.lng, altitude_m: point.altitude_m })),
+          route: gpsTrack.length ? gpsTrack.map(point => ({ latitude: point.lat, longitude: point.lng, altitude_m: point.altitude_m })) : cachedRoute,
           window: { start_time: startTime },
           session_impulse: metrics.impulse ?? metrics.session_impulse ?? w.actual_impulse ?? null,
           average_heartrate: avgHr || null, max_heartrate: activity.max_heartrate,
@@ -543,7 +595,7 @@ export default function SessionsCalendarView({
           power_metrics: { intensity_factor: intensityFactor },
           elevation_gain_m: activity.elevation_gain_meters,
         };
-        setDetailActivityAnalysis({ activity, wearableDetails, passport });
+        if (analysis || length > 0) setDetailActivityAnalysis({ activity, wearableDetails, passport });
         setDetailWorkout(previous => previous ? {
           ...previous,
           gps_track: gpsTrack.length ? gpsTrack : previous.gps_track,
