@@ -681,7 +681,7 @@ export function hubActivityToWorkoutData(act: HubExternalActivity): import('../t
   const gpsTrack = rawGps.map(p => ({
     lat: p.lat,
     lng: p.lng,
-    altitude_m: p.altitude ?? null,
+    altitude_m: p.altitude_m ?? p.altitude ?? null,
     timestamp: p.timestamp ?? p.time ?? null,
     speed_kmh: p.speed_kmh ?? p.speed ?? null,
     heart_rate: p.heart_rate ?? p.hr ?? null,
