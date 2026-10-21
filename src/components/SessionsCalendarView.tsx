@@ -11,6 +11,7 @@ import { useSessionDifficulty } from '../hooks/useSessionDifficulty';
 import { getDifficultyClasses, getDifficultyLabel, SSRResult } from '../lib/sessionDifficulty';
 import { WeeklySummaryData } from '../lib/weeklySummary';
 import { WorkoutDetailModal } from './detail/WorkoutDetailModal';
+import { ActivityDetailModal } from './training/ActivityDetailModal';
 import { WorkoutData } from '../types/workoutDetail';
 import { hubSessionAction } from '../lib/hubApi';
 
@@ -364,10 +365,14 @@ export default function SessionsCalendarView({
   const [detailSteps, setDetailSteps] = useState<WorkoutStep[]>([]);
   const [detailActivityOnly, setDetailActivityOnly] = useState(false);
   const [detailActivitySource, setDetailActivitySource] = useState<string | undefined>(undefined);
+  const [detailActivityAnalysis, setDetailActivityAnalysis] = useState<{ activity: any; wearableDetails: any; passport: any } | null>(null);
+  const [detailActivityLoading, setDetailActivityLoading] = useState(false);
   const handleViewDetail = useCallback(async (w: Workout) => {
     setDetailWorkoutSource(w);
     const isExternalActivity = w.hub_matched_key?.startsWith('ext|');
     setDetailActivityOnly(isExternalActivity ?? false);
+    setDetailActivityAnalysis(null);
+    setDetailActivityLoading(Boolean(isExternalActivity));
     setDetailActivitySource(isExternalActivity ? (w.notes?.replace('Actividad importada desde ', '') || 'Hub') : undefined);
     setDetailSteps([]);
     try {
@@ -465,6 +470,7 @@ export default function SessionsCalendarView({
         }).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
         const metrics = analysis?.metrics || {};
         const passport = analysis?.biological_passport || {};
+        const session = analysis?.session || {};
         const paceValues = speeds.map(speed => speed > 0 ? 1000 / speed : 0);
         const zonesByMetric = {
           hr: calculateActivityZones(hrs, times, passportZoneRows(passport, 'hr')),
@@ -491,6 +497,53 @@ export default function SessionsCalendarView({
           || (averageSpeed > 0 && thresholdPaceSeconds > 0 ? averageSpeed / (1000 / thresholdPaceSeconds) : 0);
         const gapPace = calculateGapPace(times, distances, altitudes);
         const vam = activityDurationSeconds > 0 ? Number(hubData?.actual_elevation_gain_m || analysis?.session?.elevation_gain_m || 0) / activityDurationSeconds * 3600 : null;
+        const startTime = String(session.start_time || w.scheduled_date || data.date || new Date().toISOString());
+        const startEpoch = Date.parse(startTime);
+        const toRows = (values: number[]) => values.map((value, index) => ({
+          timestamp: startEpoch + Number(times[index] || 0) * 1000,
+          value: Number(value),
+        })).filter(row => Number.isFinite(row.timestamp) && Number.isFinite(row.value));
+        const wearableSeries: Record<string, { timestamp: number; value: number }[]> = {};
+        if (hrs.length) wearableSeries.heartrate = toRows(hrs);
+        if (powers.length) wearableSeries.power = toRows(powers);
+        if (cadences.length) wearableSeries.cadence = toRows(cadences);
+        if (altitudes.length) wearableSeries.altitude = toRows(altitudes);
+        if (distances.length) wearableSeries.distance = toRows(distances);
+        if (speeds.length) wearableSeries.speed = toRows(speeds);
+        const activityDistance = Number(session.distance_m ?? (Number(hubData?.actual_distance_km || 0) * 1000));
+        const activityDuration = Number(session.duration_seconds ?? activityDurationSeconds);
+        const activity = {
+          id: String(hubData.id), source: String(session.provider || detailActivitySource || 'Hub').toLowerCase(),
+          external_id: String(session.ow_event_id || ''),
+          sport_type: String(session.sport_raw || w.sport || 'activity').toLowerCase().replace(/[ -]/g, '_'),
+          name: w.name, start_time: startTime, local_date: startTime.slice(0, 10),
+          duration_seconds: activityDuration, elapsed_time_seconds: activityDuration,
+          distance_meters: activityDistance,
+          elevation_gain_meters: Number(session.elevation_gain_m ?? hubData?.actual_elevation_gain_m ?? 0),
+          average_speed_mps: activityDuration > 0 ? activityDistance / activityDuration : averageSpeed,
+          max_speed_mps: null, average_heartrate: avgHr || null,
+          max_heartrate: Number(hubData?.actual_max_hr ?? metrics.max_hr ?? 0) || null,
+          has_heartrate: hrs.length > 0, average_watts: avgPower || null,
+          max_watts: Number(hubData?.actual_max_power_watts ?? metrics.max_power ?? 0) || null,
+          weighted_avg_watts: Number(metrics.normalized_power_watts ?? hubData?.normalized_power_watts ?? 0) || null,
+          has_power: powers.length > 0,
+          average_cadence: Number(hubData?.actual_avg_cadence ?? (cadences.length ? cadences.reduce((sum, value) => sum + value, 0) / cadences.length : 0)) || null,
+          suffer_score: null, calories: Number(session.calories ?? hubData?.actual_calories ?? 0) || null,
+          device_name: String(session.provider || detailActivitySource || ''), time_in_zones: metrics.time_in_zones || null,
+          fused_activity_id: null, raw_data: { actual_impulse: metrics.impulse ?? metrics.session_impulse ?? w.actual_impulse ?? null },
+          streams_fetched: true,
+        };
+        const wearableDetails = {
+          series: wearableSeries,
+          route: gpsTrack.map(point => ({ latitude: point.lat, longitude: point.lng, altitude_m: point.altitude_m })),
+          window: { start_time: startTime },
+          session_impulse: metrics.impulse ?? metrics.session_impulse ?? w.actual_impulse ?? null,
+          average_heartrate: avgHr || null, max_heartrate: activity.max_heartrate,
+          average_watts: avgPower || null, avg_power: avgPower || null,
+          power_metrics: { intensity_factor: intensityFactor },
+          elevation_gain_m: activity.elevation_gain_meters,
+        };
+        setDetailActivityAnalysis({ activity, wearableDetails, passport });
         setDetailWorkout(previous => previous ? {
           ...previous,
           gps_track: gpsTrack.length ? gpsTrack : previous.gps_track,
@@ -510,6 +563,7 @@ export default function SessionsCalendarView({
       } catch (err) {
         console.error('Error loading Hub activity analysis:', err);
       }
+      setDetailActivityLoading(false);
     }
   }, [hubAthleteId]);
 
@@ -1514,14 +1568,35 @@ export default function SessionsCalendarView({
         />
       )}
 
-      {detailWorkout && (
+      {detailWorkout && detailActivityOnly ? (
+        <ActivityDetailModal
+          activity={detailActivityAnalysis?.activity || {
+            id: detailWorkout.id, source: (detailActivitySource || 'Hub').toLowerCase(), sport_type: detailWorkoutSource?.sport || 'activity',
+            name: detailWorkout.name || 'Activity', start_time: detailWorkout.date || new Date().toISOString(),
+            local_date: detailWorkout.date || null, duration_seconds: Number(detailWorkout.duration_seconds || 0), elapsed_time_seconds: Number(detailWorkout.duration_seconds || 0),
+            distance_meters: Number(detailWorkout.distance_km || 0) * 1000, elevation_gain_meters: Number(detailWorkout.actual_elevation_gain_m || 0),
+            average_speed_mps: Number(detailWorkout.actual_avg_speed_kmh || 0) / 3.6, max_speed_mps: null,
+            average_heartrate: detailWorkout.actual_avg_hr ?? null, max_heartrate: detailWorkout.actual_max_hr ?? null, has_heartrate: false,
+            average_watts: detailWorkout.actual_avg_power_watts ?? null, max_watts: detailWorkout.actual_max_power_watts ?? null,
+            weighted_avg_watts: detailWorkout.normalized_power_watts ?? null, has_power: false, average_cadence: detailWorkout.actual_avg_cadence ?? null,
+            suffer_score: null, calories: detailWorkout.actual_calories ?? null, device_name: detailActivitySource || null,
+            time_in_zones: null, fused_activity_id: null, raw_data: { actual_impulse: detailWorkout.actual_impulse }, streams_fetched: false,
+          }}
+          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); setDetailSteps([]); setDetailActivityOnly(false); setDetailActivitySource(undefined); setDetailActivityAnalysis(null); setDetailActivityLoading(false); }}
+          wearableDetails={detailActivityAnalysis?.wearableDetails}
+          biologicalPassport={detailActivityAnalysis?.passport}
+          wearableLoading={detailActivityLoading}
+          isWearable
+          language="es"
+        />
+      ) : detailWorkout && (
         <WorkoutDetailModal
           isOpen={true}
-          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); setDetailSteps([]); setDetailActivityOnly(false); setDetailActivitySource(undefined); }}
+          onClose={() => { setDetailWorkout(null); setDetailWorkoutSource(null); setDetailSteps([]); setDetailActivityOnly(false); setDetailActivitySource(undefined); setDetailActivityAnalysis(null); setDetailActivityLoading(false); }}
           workoutData={detailWorkout}
           userRole={isCoach ? 'coach' : 'athlete'}
           isCompleted={detailWorkoutSource?.compliance_status === 'completed'}
-          isActivityOnly={detailActivityOnly}
+          isActivityOnly={false}
           activitySource={detailActivitySource}
           steps={detailSteps}
           sport={detailWorkoutSource?.sport || 'cycling'}
