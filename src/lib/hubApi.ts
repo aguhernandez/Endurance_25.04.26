@@ -18,6 +18,7 @@ export const RECENT_RECHECK_DAYS = 7;
 export const PULL_MIN_INTERVAL_MS = 10 * 60 * 1000;
 export const PAGE_SIZE = 200;
 const SESSION_REVIEW_FUNCTION = import.meta.env.VITE_HUB_SESSION_REVIEW_FUNCTION || 'endurance-satellite-bridge';
+const SHARED_CONTEXT_FUNCTION = import.meta.env.VITE_HUB_SHARED_CONTEXT_FUNCTION || 'endurance-shared-context';
 
 const SESSION_TOKEN_KEY = 'hub_session_token';
 
@@ -66,8 +67,10 @@ function getSessionToken(): string | null {
 }
 
 async function plannerHeaders(): Promise<HeadersInit> {
+  const sessionToken = getSessionToken();
   return {
     'X-Planner-Token': await getPlannerToken(),
+    ...(sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {}),
     'Content-Type': 'application/json',
   };
 }
@@ -342,6 +345,51 @@ export interface HubTrainingSchedule {
   weekly_loads: HubWeeklyLoad[];
 }
 
+export interface HubSharedEvent {
+  id: string;
+  athlete_id: string;
+  title: string;
+  description: string | null;
+  event_kind: 'competition' | 'objective' | 'test' | 'camp' | 'rest' | 'other';
+  priority: 'A' | 'B' | 'C' | null;
+  // A continuous Hub objective deliberately has no artificial event date.
+  event_date: string | null;
+  event_time: string | null;
+  sport: string | null;
+  sub_discipline: string | null;
+  distance_km: number | null;
+  location: string | null;
+  status: 'proposed' | 'approved' | 'published' | 'completed' | 'cancelled';
+  source_system: string;
+  external_key: string | null;
+  source_record_id: string | null;
+  source_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HubAvailabilityWindow {
+  id: string;
+  athlete_id: string;
+  day_of_week: number | null;
+  available_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  max_duration_minutes: number | null;
+  timezone: string;
+  is_rest_day: boolean;
+  allows_double_sessions: boolean;
+  preferences: Record<string, unknown>;
+  notes: string | null;
+  status: 'proposed' | 'approved' | 'published' | 'cancelled';
+  source_system: string;
+  external_key: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface HubEndurancePlanStep {
   order: number;
   step_type: string;
@@ -497,6 +545,50 @@ export async function hubGetAthleteProfile(athleteId: string, fallbackEmail?: st
     }
   }
   return handleResponse<HubAthleteProfile>(res);
+}
+
+export async function hubGetSharedEvents(athleteId: string): Promise<HubSharedEvent[]> {
+  const res = await fetch(
+    `${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/shared-events?athlete_id=${encodeURIComponent(athleteId)}`,
+    { headers: await plannerHeaders() }
+  );
+  const json = await handleResponse<{ events?: HubSharedEvent[] }>(res);
+  return json.events || [];
+}
+
+export async function hubUpsertSharedEvent(
+  athleteId: string,
+  event: Omit<Partial<HubSharedEvent>, 'athlete_id'> & { title: string; external_key: string }
+): Promise<HubSharedEvent> {
+  const res = await fetch(`${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/shared-event?athlete_id=${encodeURIComponent(athleteId)}`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ ...event, athlete_id: athleteId }),
+  });
+  const json = await handleResponse<{ event: HubSharedEvent }>(res);
+  return json.event;
+}
+
+export async function hubGetAvailability(athleteId: string): Promise<HubAvailabilityWindow[]> {
+  const res = await fetch(
+    `${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/availability?athlete_id=${encodeURIComponent(athleteId)}`,
+    { headers: await plannerHeaders() }
+  );
+  const json = await handleResponse<{ availability?: HubAvailabilityWindow[] }>(res);
+  return json.availability || [];
+}
+
+export async function hubUpsertAvailability(
+  athleteId: string,
+  availability: Omit<Partial<HubAvailabilityWindow>, 'athlete_id'> & { external_key: string }
+): Promise<HubAvailabilityWindow> {
+  const res = await fetch(`${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/availability?athlete_id=${encodeURIComponent(athleteId)}`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ ...availability, athlete_id: athleteId }),
+  });
+  const json = await handleResponse<{ availability: HubAvailabilityWindow }>(res);
+  return json.availability;
 }
 
 export async function hubGetBiologicalPassport(athleteId: string, fallbackEmail?: string): Promise<HubBiologicalPassport> {

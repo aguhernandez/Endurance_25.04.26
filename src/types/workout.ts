@@ -243,6 +243,8 @@ export interface ATPEvent {
   event_date: string;
   priority: 'A' | 'B' | 'C';
   notes?: string;
+  /** Hub-owned event ID when this local ATP row is only a planning projection. */
+  shared_event_id?: string | null;
   created_at: string;
   updated_at: string;
 }
