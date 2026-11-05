@@ -6,8 +6,8 @@ import { Plus, CreditCard as Edit, Trash2, Download, Clock, ChevronDown, Chevron
 import WorkoutBuilder from './WorkoutBuilder';
 import WorkoutPreview, { WorkoutPhysiologyProps } from './WorkoutPreview';
 import { downloadFIT } from '../lib/fitExport';
-import { getSportIcon, getSportLabel } from '../lib/calculations';
-import { getDifficultyClasses, getDifficultyLabel, DifficultyColor, reconstructCAAndAL, calculateSessionImpulse } from '../lib/sessionDifficulty';
+import { getSportIcon } from '../lib/calculations';
+import { getDifficultyClasses, getDifficultyLabel, DifficultyColor, calculateImpulse, reconstructLoadState } from '../lib/impulseEngine';
 
 interface WorkoutsListProps {
   coachId: string;
@@ -312,13 +312,6 @@ export default function WorkoutsList({ coachId, isCoach }: WorkoutsListProps) {
       runThreshold = phys.run_pace_z4_min;
     }
 
-    let swimThreshold: number | null = null;
-    if (phys?.swim_css_per_100m) {
-      swimThreshold = phys.swim_css_per_100m * 10;
-    } else if (phys?.swim_pace_z4_min && phys?.swim_pace_z4_max) {
-      swimThreshold = (phys.swim_pace_z4_min + phys.swim_pace_z4_max) / 2;
-    }
-
     let currentCA: number | null = null;
     let currentRB: number | null = null;
 
@@ -328,23 +321,22 @@ export default function WorkoutsList({ coachId, isCoach }: WorkoutsListProps) {
 
       for (const s of sessionsResult.data) {
         if (s.status !== 'completed') continue;
-        const imp = calculateSessionImpulse({
+        const imp = calculateImpulse({
           durationMinutes: s.duration_minutes,
           sport: s.sport,
           avgPowerWatts: s.avg_power_watts,
           ftp,
           avgPacePerKm: s.avg_pace_per_km,
           thresholdPacePerKm: runThreshold,
-          perceivedEffort: s.perceived_effort,
-        });
+        }).impulse;
         const existing = dailyMap.get(s.session_date) ?? 0;
-        dailyMap.set(s.session_date, existing + imp);
+        if (imp != null) dailyMap.set(s.session_date, existing + imp);
       }
 
       const dailyImpulses = Array.from(dailyMap.entries()).map(([date, impulse]) => ({ date, impulse }));
-      const { ca, rb } = reconstructCAAndAL(dailyImpulses, today);
-      currentCA = ca > 0 ? ca : null;
-      currentRB = rb;
+      const state = reconstructLoadState(dailyImpulses, today);
+      currentCA = state.ca > 0 ? state.ca : null;
+      currentRB = state.rb;
     }
 
     setPhysiology({

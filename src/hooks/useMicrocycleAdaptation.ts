@@ -8,7 +8,7 @@ import {
   PlannedSessionInput,
   FatigueClassification,
 } from '../lib/microcycleAdaptationEngine';
-import { reconstructCAAndAL } from '../lib/sessionDifficulty';
+import { calculateImpulse, reconstructLoadState } from '../lib/impulseEngine';
 import { StoredWorkoutAnalysis } from './useWorkoutAnalysis';
 import { Sport } from '../types/workout';
 
@@ -120,22 +120,19 @@ export function useMicrocycleAdaptation(
 
       const dailyImpulses = (sessions ?? [])
         .filter(s => s.session_date && s.duration_minutes > 0)
-        .map(s => {
-          const durationHours = s.duration_minutes / 60;
-          const sportFactor = s.sport === 'running' ? 1.15 : s.sport === 'swimming' ? 0.85 : 1.0;
-          let relIntensity = 0.65;
-          if (s.avg_power_watts) {
-            relIntensity = 0.75;
-          } else if (s.perceived_effort) {
-            relIntensity = s.perceived_effort / 10;
-          }
-          return {
-            date: s.session_date as string,
-            impulse: Math.round(durationHours * relIntensity * sportFactor * 100) / 100,
-          };
-        });
+        .map(s => ({
+          date: s.session_date as string,
+          impulse: calculateImpulse({
+            sport: s.sport as Sport,
+            durationMinutes: s.duration_minutes,
+            avgPowerWatts: s.avg_power_watts,
+          }).impulse,
+        }))
+        .filter((s): s is { date: string; impulse: number } => s.impulse != null);
 
-      const { ca: fitness, al: fatigue } = reconstructCAAndAL(dailyImpulses, today);
+      const state = reconstructLoadState(dailyImpulses, today);
+      const fitness = state.ca;
+      const fatigue = state.al;
 
       const fatigueClassification = classifyFatigueState(fitness, fatigue);
 

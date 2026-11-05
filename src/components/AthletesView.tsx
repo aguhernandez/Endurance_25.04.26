@@ -123,8 +123,7 @@ export default function AthletesView() {
   const [showProgramModal, setShowProgramModal] = useState(false);
 
   const coachHubId = user?.id;
-  const assignedAthletes = (user as any)?.assigned_athletes as string[] | undefined;
-  const { athletes, loading, refresh: refreshAthletes } = useCoachAthletes(coachHubId, assignedAthletes);
+  const { athletes, loading, refresh: refreshAthletes } = useCoachAthletes(coachHubId);
 
   const { physiology, refetch: refetchPhysiology } = useAthletePhysiology(selectedAthlete?.id);
   const { snapshot: passportSnapshot, loading: passportLoading, error: passportError, fetchPassport } = useHubPassport();
@@ -250,7 +249,7 @@ export default function AthletesView() {
                         </div>
                         <div>
                           <p className="text-2xl font-bold text-white">{stats.totalLoad}</p>
-                          <p className="text-xs text-gray-400">weekly load</p>
+                          <p className="text-xs text-gray-400">weekly Impulse</p>
                         </div>
                       </div>
                       {selectedAthlete.hub_user_id && (

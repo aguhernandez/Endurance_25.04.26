@@ -1,5 +1,6 @@
 import { TrainingSession } from '../lib/supabase';
 import { Workout, DailyLoad, Sport } from '../types/workout';
+import { calculateImpulse, reconstructLoadState } from './impulseEngine';
 
 export function calculateRelativeIntensity(avgPower: number | null, ftp: number | null): number | null {
   if (!avgPower || !ftp || ftp === 0) return null;
@@ -7,8 +8,7 @@ export function calculateRelativeIntensity(avgPower: number | null, ftp: number 
 }
 
 export function calculateSessionLoad(durationMinutes: number, avgPower: number | null, ftp: number | null): number | null {
-  if (!avgPower || !ftp || ftp === 0) return null;
-  return Math.round(durationMinutes * (avgPower / ftp));
+  return calculateImpulse({ sport: 'cycling', durationMinutes, avgPowerWatts: avgPower, ftp }).impulse;
 }
 
 export function getPowerZone(avgPower: number | null, ftp: number | null): number | null {
@@ -139,7 +139,7 @@ export function calculateWorkoutImpulse(
   intensityPercentFtp: number
 ): number {
   if (durationMinutes <= 0 || intensityPercentFtp < 0) return 0;
-  return Math.round(durationMinutes * (intensityPercentFtp / 100));
+  return Math.round((durationMinutes / 60) * Math.pow(intensityPercentFtp / 100, 2) * 100);
 }
 
 export function calculateEstimatedImpulse(workout: Workout): number | null {
@@ -165,18 +165,20 @@ export interface TrainingMetrics {
 
 export function calculateTrainingMetrics(
   dailyLoads: DailyLoad[],
-  daysBack: number = 42
+  _daysBack: number = 42
 ): TrainingMetrics {
   const sortedLoads = dailyLoads.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const al = sortedLoads.slice(-7).reduce((sum, d) => sum + d.actual_impulse, 0);
-  const ct = sortedLoads.slice(-14).reduce((sum, d) => sum + d.actual_impulse, 0);
-  const sb = ct - al;
+  const entries = sortedLoads.map(d => ({ date: d.date, impulse: d.actual_impulse }));
+  const state = reconstructLoadState(entries, sortedLoads[sortedLoads.length - 1]?.date ?? new Date().toISOString().slice(0, 10));
+  const al = state.al;
+  const ct = state.ca;
+  const sb = state.rb;
   const ratio = al > 0 ? ct / al : 0;
 
   return {
-    acuteLoad: Math.round(al / 7),
-    chronicLoad: Math.round(ct / 14),
+    acuteLoad: Math.round(al * 100) / 100,
+    chronicLoad: Math.round(ct * 100) / 100,
     stressBalance: Math.round(sb),
     trainingRatio: Math.round(ratio * 100) / 100
   };

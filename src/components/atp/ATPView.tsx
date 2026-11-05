@@ -58,8 +58,7 @@ export default function ATPView({ isCoach }: ATPViewProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const coachHubId = isCoach ? user?.id : undefined;
-  const assignedAthletes = isCoach ? (user as any)?.assigned_athletes as string[] | undefined : undefined;
-  const { athletes: hubAthletes } = useCoachAthletes(coachHubId, assignedAthletes);
+  const { athletes: hubAthletes } = useCoachAthletes(coachHubId);
   const athletes: AthleteOption[] = hubAthletes.map(a => ({ id: a.id, full_name: a.full_name, email: a.email }));
 
   const athleteId = isCoach ? (selectedAthleteId || profile?.id || null) : (profile?.id || null);

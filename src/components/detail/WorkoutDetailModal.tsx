@@ -380,7 +380,6 @@ export function WorkoutDetailModal({
   const elevGain = data.actual_elevation_gain_m ?? null;
   const elevLoss = data.actual_elevation_loss_m ?? null;
   const calories = data.actual_calories ?? null;
-  const tss = data.actual_tss ?? null;
   const rpe = data.rpe ?? null;
   const zoneBreakdown = data.zone_distributions_by_metric as Record<string, ZoneDistribution[]> | undefined;
   const impulseEstimate = Boolean(data.summary?.impulse_is_estimate);
@@ -567,7 +566,7 @@ export function WorkoutDetailModal({
                     {calories != null && <KpiCard icon={Activity} label="Calorías" value={`${Math.round(calories)} kcal`} color="bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" />}
                     {data.actual_impulse != null
                       ? <KpiCard icon={Activity} label="Impulse" value={`${Math.round(data.actual_impulse)}${impulseEstimate ? ' est.' : ''}`} color="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />
-                      : tss != null && !isActivityOnly && <KpiCard icon={Activity} label="TSS" value={tss.toFixed(0)} color="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />}
+                      : null}
                     {rpe != null && <KpiCard icon={Activity} label="RPE" value={`${rpe}/10`} color="bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400" />}
                   </div>
 

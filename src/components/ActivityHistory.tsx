@@ -219,10 +219,10 @@ export default function ActivityHistory() {
                   </span>
                 )}
 
-                {record.training_stress_score != null && (
+                {record.impulse != null && (
                   <span className="flex items-center gap-1">
                     <TrendingUp size={11} />
-                    TSS {Math.round(record.training_stress_score)}
+                    Impulse {Math.round(record.impulse)}
                   </span>
                 )}
 

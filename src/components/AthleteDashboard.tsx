@@ -303,7 +303,7 @@ export default function AthleteDashboard({ onNavigate }: AthleteDashboardProps) 
 
             <div className="card">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 dark:text-gray-400 text-sm font-body">Total Load</span>
+                <span className="text-gray-600 dark:text-gray-400 text-sm font-body">Weekly Impulse</span>
                 <Calendar className="w-5 h-5 text-primary-yellow" />
               </div>
               <p className="text-3xl font-bold text-primary-purple dark:text-white">{stats.totalLoad}</p>

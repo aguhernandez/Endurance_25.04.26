@@ -492,11 +492,24 @@ export async function hubGetCoachAthletes(coachHubId: string): Promise<HubCoachA
     { headers }
   );
   if (!res.ok) {
-    console.warn('[HubApi] coach-athletes failed', res.status);
-    return [];
+    throw new Error(`Hub no autorizó la consulta de atletas (${res.status})`);
   }
   const json = await res.json();
   return json.athletes || json.data || [];
+}
+
+export type HubImpulseAction = 'get-impulse-calculations' | 'upsert-impulse-calculation';
+
+export async function hubImpulseAction(
+  action: HubImpulseAction,
+  payload: Record<string, unknown>,
+): Promise<any> {
+  const res = await fetch(`${BASE_URL}/endurance-satellite-bridge`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ action, ...payload }),
+  });
+  return handleResponse<any>(res);
 }
 
 export type HubSessionAction = 'get-session-analysis' | 'get-session-timeseries' | 'list-review-inbox' | 'save-review';

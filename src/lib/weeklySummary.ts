@@ -1,5 +1,10 @@
-import { DaySimResult, WeekSimResult } from './banisterEngine';
-import { calculateSessionImpulse, SessionImpulseInput, DailyImpulseEntry } from './sessionDifficulty';
+import { WeekSimResult } from './banisterEngine';
+import {
+  advanceLoadState,
+  calculateImpulse,
+  DEFAULT_TAU_ACUTE,
+  DEFAULT_TAU_CHRONIC,
+} from './impulseEngine';
 import { Sport } from '../types/workout';
 
 export interface CompletedSession {
@@ -67,6 +72,7 @@ export interface DayDetail {
 
   // Actual (from completed sessions)
   actualImpulse: number;
+  actualImpulseStatus?: 'calculated' | 'estimated' | 'manual' | 'insufficient';
   actualCA: number | null;
   actualAF: number | null;
   actualRB: number | null;
@@ -113,13 +119,11 @@ function simulateForward(
   ca: number,
   af: number,
   impulse: number,
-  tauChronic: number = 28,
-  tauAcute: number = 7
+  tauChronic: number = DEFAULT_TAU_CHRONIC,
+  tauAcute: number = DEFAULT_TAU_ACUTE
 ): { ca: number; af: number; rb: number } {
-  const newCA = ca + (impulse - ca) / tauChronic;
-  const newAF = af + (impulse - af) / tauAcute;
-  const newRB = newCA - newAF;
-  return { ca: newCA, af: newAF, rb: newRB };
+  const state = advanceLoadState({ ca, al: af }, impulse, tauChronic, tauAcute);
+  return { ca: state.ca, af: state.al, rb: state.rb };
 }
 
 export function computeWeeklySummaries(
@@ -149,8 +153,8 @@ export function computeWeeklySummaries(
   }
 
   // Reconstruct actual CA/AF from completed sessions
-  const tauChronic = 28;
-  const tauAcute = 7;
+  const tauChronic = DEFAULT_TAU_CHRONIC;
+  const tauAcute = DEFAULT_TAU_ACUTE;
 
   let actualCA = 0;
   let actualAF = 0;
@@ -176,14 +180,9 @@ export function computeWeeklySummaries(
     let weekActualRBSum = 0;
     let actualDaysWithData = 0;
 
-    let weekStartCA = actualCA;
-    let weekStartAF = actualAF;
-
     for (const atpDay of week.days) {
       const dayDate = new Date(atpDay.date + 'T00:00:00');
       const isPast = dayDate < currentDate;
-      const isToday = atpDay.date === currentDateStr;
-
       const completed = completedMap.get(atpDay.date) || [];
       const planned = plannedMap.get(atpDay.date) || [];
 
@@ -196,7 +195,7 @@ export function computeWeeklySummaries(
       let dayActualImpulse = 0;
       if (isCompleted) {
         for (const session of completed) {
-          const input: SessionImpulseInput = {
+          const input = {
             durationMinutes: session.duration_minutes,
             sport: session.sport,
             avgPowerWatts: session.avg_power_watts,
@@ -205,7 +204,11 @@ export function computeWeeklySummaries(
             thresholdPacePerKm: getThresholdPace(session.sport, physiology),
             perceivedEffort: session.perceived_effort,
           };
-          dayActualImpulse += calculateSessionImpulse(input);
+          const impulseResult = calculateImpulse(input);
+          dayActualImpulse += impulseResult.impulse ?? 0;
+          if (impulseResult.status === 'insufficient') {
+            // An unsupported activity contributes no derived load; its status remains visible to consumers.
+          }
         }
       }
 

@@ -39,8 +39,7 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
 
   const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
   const coachHubId = isCoach ? user?.id : undefined;
-  const assignedAthletes = isCoach ? (user as any)?.assigned_athletes as string[] | undefined : undefined;
-  const { athletes, loading: athletesLoading } = useCoachAthletes(coachHubId, assignedAthletes);
+  const { athletes, loading: athletesLoading } = useCoachAthletes(coachHubId);
   const activeAthleteId = isCoach ? selectedAthlete?.id : profile?.id;
   const activeAthleteProfile = isCoach ? selectedAthlete : profile;
   const { physiology } = useAthletePhysiology(activeAthleteId || null);

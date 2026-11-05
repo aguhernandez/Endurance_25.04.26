@@ -383,7 +383,7 @@ export function WorkoutCompletionDetail({ sw, log, onBack }: {
   const elevation = sw.actual_elevation_gain_m ?? log?.elevation_gain_m ?? null;
   const calories = sw.actual_calories ?? log?.calories ?? null;
   const distanceKm = sw.actual_distance_km ?? log?.distance_km ?? null;
-  const impulse = sw.actual_impulse ?? log?.session_impulse ?? log?.tss ?? null;
+  const impulse = sw.actual_impulse ?? log?.session_impulse ?? null;
   const relIntensity = log?.relative_intensity ?? null;
 
   const gpsTrack = sw.gps_track ?? log?.gps_track ?? null;

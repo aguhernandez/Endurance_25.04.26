@@ -227,13 +227,11 @@ function SchedulePreview({ schedule }: { schedule: HubTrainingSchedule }) {
                       {wl.planned_hours != null && (
                         <span className="text-gray-600 dark:text-gray-400">
                           Plan: <strong>{wl.planned_hours.toFixed(1)}h</strong>
-                          {wl.planned_tss ? ` / ${wl.planned_tss} TSS` : ''}
                         </span>
                       )}
                       {wl.actual_hours != null && (
                         <span className="text-emerald-600 dark:text-emerald-400">
                           Done: <strong>{wl.actual_hours.toFixed(1)}h</strong>
-                          {wl.actual_tss ? ` / ${wl.actual_tss} TSS` : ''}
                         </span>
                       )}
                       {wl.load_status && (
@@ -425,8 +423,8 @@ function TrainingLogDetail({ log, onBack }: { log: HubCompletedLog; onBack: () =
           {log.calories != null && (
             <MetricBox icon={Flame} label="Calories" value={`${log.calories} kcal`} color="text-orange-600" bg="bg-orange-50 dark:bg-orange-900/20" />
           )}
-          {(log.session_impulse != null || log.tss != null) && (
-            <MetricBox icon={BarChart2} label="Impulse / TSS" value={`${log.session_impulse ?? log.tss}`} color="text-violet-600" bg="bg-violet-50 dark:bg-violet-900/20" />
+          {log.session_impulse != null && (
+            <MetricBox icon={BarChart2} label="Impulse" value={`${log.session_impulse}`} color="text-violet-600" bg="bg-violet-50 dark:bg-violet-900/20" />
           )}
           {log.rpe != null && (
             <MetricBox icon={Activity} label="RPE" value={`${log.rpe} / 10`} color="text-pink-600" bg="bg-pink-50 dark:bg-pink-900/20" />
@@ -505,8 +503,8 @@ function TrainingLogList({ logs, onSelect }: { logs: HubCompletedLog[]; onSelect
                   {log.duration_minutes != null && <span>{log.duration_minutes} min</span>}
                   {log.distance_km != null && <span>{log.distance_km} km</span>}
                   {log.avg_heart_rate != null && <span>{log.avg_heart_rate} bpm</span>}
-                  {(log.session_impulse != null || log.tss != null) && (
-                    <span>Impulse {log.session_impulse ?? log.tss}</span>
+                  {log.session_impulse != null && (
+                    <span>Impulse {log.session_impulse}</span>
                   )}
                 </div>
               </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, Profile } from '../lib/supabase';
-import { hubGetCoachAthletes, hubGetAthleteProfile, HubCoachAthlete } from '../lib/hubApi';
+import { hubGetCoachAthletes, HubCoachAthlete } from '../lib/hubApi';
 
 interface UseCoachAthletesResult {
   athletes: Profile[];
@@ -11,7 +11,6 @@ interface UseCoachAthletesResult {
 
 export function useCoachAthletes(
   coachHubId: string | undefined,
-  assignedAthletes: string[] | undefined
 ): UseCoachAthletesResult {
   const [athletes, setAthletes] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,13 +32,9 @@ export function useCoachAthletes(
     setError(null);
 
     try {
-      // Fetch roster from Hub
-      let hubAthletes: HubCoachAthlete[] = [];
-      try {
-        hubAthletes = await hubGetCoachAthletes(coachHubId!);
-      } catch (err) {
-        console.warn('[useCoachAthletes] Hub fetch failed, falling back to local:', err);
-      }
+      // Hub is the only authority for the coach roster. A failed request must
+      // not broaden access to local profiles or client-decoded JWT claims.
+      const hubAthletes: HubCoachAthlete[] = await hubGetCoachAthletes(coachHubId!);
 
       if (hubAthletes.length > 0) {
         // Get existing local profiles for these athletes
@@ -92,71 +87,7 @@ export function useCoachAthletes(
 
         setAthletes(result);
       } else {
-        // Fallback: the coach's roster comes from the Hub-issued JWT
-        // (assigned_athletes). Create stub profiles for Hub athletes that have
-        // no local profile yet so they appear and their data can be pulled.
-        if (assignedAthletes && assignedAthletes.length > 0) {
-          const { data: localProfiles } = await supabase
-            .from('profiles')
-            .select('*')
-            .in('hub_user_id', assignedAthletes);
-
-          const existingMap = new Map((localProfiles || []).map(p => [p.hub_user_id, p]));
-          const missing = assignedAthletes.filter(id => !existingMap.has(id));
-
-          if (missing.length > 0) {
-            // Try to enrich each unknown athlete with real name/email from Hub.
-            // The athlete-profile endpoint may fail (Hub-side); fall back to a
-            // readable placeholder so the athlete still appears in the list.
-            const enriched = await Promise.all(
-              missing.map(async id => {
-                try {
-                  const prof = await hubGetAthleteProfile(id);
-                  const name = prof.athlete?.full_name;
-                  return {
-                    id,
-                    hub_user_id: id,
-                    email: name ? name.toLowerCase().replace(/\s+/g, '.') + '@hub.asciende.pro' : `atleta-${id.slice(0, 8)}@hub.asciende.pro`,
-                    full_name: name || `Atleta Hub (${id.slice(0, 8)})`,
-                    role: 'athlete' as const,
-                  };
-                } catch {
-                  return {
-                    id,
-                    hub_user_id: id,
-                    email: `atleta-${id.slice(0, 8)}@hub.asciende.pro`,
-                    full_name: `Atleta Hub (${id.slice(0, 8)})`,
-                    role: 'athlete' as const,
-                  };
-                }
-              })
-            );
-            const { data: created, error: insertErr } = await supabase
-              .from('profiles')
-              .upsert(enriched, { onConflict: 'hub_user_id' })
-              .select();
-
-            if (insertErr) {
-              console.warn('[useCoachAthletes] Error creating stub profiles:', insertErr);
-            } else if (created) {
-              for (const p of created) existingMap.set(p.hub_user_id, p);
-            }
-          }
-
-          const result: Profile[] = [];
-          for (const id of assignedAthletes) {
-            const local = existingMap.get(id);
-            if (local) result.push(local);
-          }
-          setAthletes(result);
-        } else {
-          const { data } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('role', 'athlete')
-            .order('full_name');
-          setAthletes(data || []);
-        }
+        setAthletes([]);
       }
     } catch (err: any) {
       console.error('[useCoachAthletes] Error:', err);
