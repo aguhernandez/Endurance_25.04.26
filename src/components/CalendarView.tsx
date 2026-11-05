@@ -35,12 +35,11 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   const [autoPulledFor, setAutoPulledFor] = useState<string | null>(null);
 
   const { pushing, pushWeeklyPlan } = useHubPlan();
-  const { loading: pullLoading, fetchSchedule, activitiesCount } = useHubSchedule();
+  const { loading: pullLoading, fetchSchedule } = useHubSchedule();
 
   const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
   const coachHubId = isCoach ? user?.id : undefined;
-  const assignedAthletes = isCoach ? (user as any)?.assigned_athletes as string[] | undefined : undefined;
-  const { athletes, loading: athletesLoading } = useCoachAthletes(coachHubId, assignedAthletes);
+  const { athletes, loading: athletesLoading } = useCoachAthletes(coachHubId);
   const activeAthleteId = isCoach ? selectedAthlete?.id : profile?.id;
   const activeAthleteProfile = isCoach ? selectedAthlete : profile;
   const { physiology } = useAthletePhysiology(activeAthleteId || null);
@@ -183,7 +182,6 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
   }
 
   const completedSessions = sessions.filter(s => s.status === 'completed');
-  const plannedSessions = sessions.filter(s => s.status === 'planned');
   const totalMinutes = sessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
   const thisWeek = sessions.filter(s => {
     const d = new Date(s.session_date);
@@ -193,11 +191,11 @@ export default function CalendarView({ onNavigate }: { onNavigate?: (view: strin
     return d >= weekStart;
   });
 
-  const zoneSystem: '5' | '7' = (activeAthleteProfile?.preferred_zone_system ?? physiology?.zone_system ?? '5') as '5' | '7';
+  const zoneSystem = physiology?.zone_system ?? '5';
 
   const hrZones = physiology
     ? extractHRZones(physiology, zoneSystem)
-    : getDefaultHRZones(physiology?.hr_max ?? null, physiology?.hr_rest ?? null);
+    : getDefaultHRZones(null, null);
 
   const powerZones = physiology
     ? extractPowerZones(physiology, ftp, zoneSystem)

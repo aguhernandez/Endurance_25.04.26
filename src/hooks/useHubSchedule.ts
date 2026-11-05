@@ -259,7 +259,7 @@ async function syncCompletedWorkoutsFromHub(
 
   const plannedDates = new Set(
     allWorkouts
-      .filter(sw => sw.status === 'pending' || sw.status === 'planned')
+      .filter(sw => sw.status === 'pending')
       .map(sw => sw.scheduled_date)
   );
   const missedWorkouts = localWorkoutList.filter(lw =>
@@ -346,7 +346,7 @@ async function syncExternalActivities(
 
   try {
     const candidates = activities.map(a => ({ hubId: a.id, date: a.local_date }));
-    const { loadedIds, mutableIds } = await getMutableGate(localAthleteId, candidates);
+    const { loadedIds } = await getMutableGate(localAthleteId, candidates);
 
     const today = dayOffset(0);
     const recheckFrom = dayOffset(-RECENT_RECHECK_DAYS);

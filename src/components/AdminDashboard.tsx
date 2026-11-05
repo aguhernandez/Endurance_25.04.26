@@ -9,7 +9,7 @@ interface AdminDashboardProps {
   onNavigate: (view: View) => void;
 }
 
-export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
+export default function AdminDashboard(_props: AdminDashboardProps) {
   const { profile } = useAuth();
   const [users, setUsers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);

@@ -59,10 +59,6 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function getWeeksBetween(a: Date, b: Date): number {
-  return daysBetween(a, b) / 7;
-}
-
 function caTargetAtDay(
   caStart: number,
   caFinal: number,
@@ -73,7 +69,6 @@ function caTargetAtDay(
   const weekIndex = dayIndex / 7;
   const totalWeeks = totalDays / 7;
   if (totalWeeks <= 0) return caFinal;
-  const progress = weekIndex / totalWeeks;
   return caStart + (caFinal - caStart) * (1 - Math.exp(-k * weekIndex));
 }
 
@@ -194,13 +189,6 @@ export function runATPSimulation(
     const absoluteWeek = Math.floor(dayIdx / 7);
     const microcycleWeek = getMicrocycleWeek(absoluteWeek);
     const microcycleMultiplier = getMicrocycleMultiplier(microcycleWeek);
-
-    const caTargetToday = caTargetAtDay(
-      params.caStart,
-      params.caTargetMainEvent,
-      totalDays,
-      dayIdx
-    );
 
     const caTargetNextDay = caTargetAtDay(
       params.caStart,

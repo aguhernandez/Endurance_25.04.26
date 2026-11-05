@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Tag, Search } from 'lucide-react';
+import { X, Plus, Tag } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Tag as TagType, TagCategory } from '../../types/workout';
 

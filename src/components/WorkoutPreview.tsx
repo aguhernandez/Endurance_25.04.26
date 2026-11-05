@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { WorkoutStep, StepType } from '../types/workout';
-import { calculateWorkoutImpulseFromSteps, getDifficultyClasses, getDifficultyLabel, classifySSR, computeCapacityUtilization, classifyCU, getCULabel } from '../lib/sessionDifficulty';
+import { getDifficultyClasses, getDifficultyLabel, classifyDifficultyRatio, calculatePlannedSteps } from '../lib/impulseEngine';
 import type { Sport } from '../types/workout';
 
 function expandForPreview(steps: Partial<WorkoutStep>[]): Partial<WorkoutStep>[] {
@@ -44,7 +44,7 @@ function expandForPreview(steps: Partial<WorkoutStep>[]): Partial<WorkoutStep>[]
   }
   return result;
 }
-
+export {};
 export interface WorkoutPhysiologyProps {
   ftp?: number | null;
   thresholdPacePerKm?: number | null;
@@ -52,7 +52,6 @@ export interface WorkoutPhysiologyProps {
   currentCA?: number | null;
   currentRB?: number | null;
 }
-
 interface WorkoutPreviewProps {
   steps: Partial<WorkoutStep>[];
   sport?: string;
@@ -100,14 +99,11 @@ function getStepLabel(step: Partial<WorkoutStep>): string {
 }
 
 interface BanisterMetrics {
-  sessionImpulse: number;
-  relativeIntensity: number;
+  sessionImpulse: number | null;
+  relativeIntensity: number | null;
   durationHours: number;
   ssrColor: 'green' | 'yellow' | 'red' | null;
   ssrValue: number | null;
-  cuColor: 'green' | 'yellow' | 'red' | null;
-  cuValue: number | null;
-  cuLabel: string | null;
 }
 
 function computeBanisterMetrics(
@@ -120,36 +116,29 @@ function computeBanisterMetrics(
 
   const rawSteps = steps.filter(s => s.id || s.step_type) as WorkoutStep[];
 
-  const sessionImpulse = calculateWorkoutImpulseFromSteps({
+  const sessionImpulseResult = calculatePlannedSteps({
     steps: rawSteps,
     sport: sport as Sport,
     ftp: physiology.ftp ?? null,
     thresholdPacePerKm: physiology.thresholdPacePerKm ?? null,
     zoneSystem: physiology.zoneSystem ?? '5',
-    fallbackDurationMinutes: totalDurationSeconds / 60,
   });
+  const sessionImpulse = sessionImpulseResult.impulse;
 
   const durationHours = totalDurationSeconds / 3600;
-  const relativeIntensity = durationHours > 0 ? sessionImpulse / durationHours : 0;
+  const relativeIntensity = sessionImpulse != null && durationHours > 0 ? Math.sqrt(sessionImpulse / (durationHours * 100)) : null;
 
   let ssrColor: 'green' | 'yellow' | 'red' | null = null;
   let ssrValue: number | null = null;
-  let cuColor: 'green' | 'yellow' | 'red' | null = null;
-  let cuValue: number | null = null;
-  let cuLabel: string | null = null;
 
-  if (physiology.currentCA && physiology.currentCA > 0) {
+  if (sessionImpulse != null && physiology.currentCA && physiology.currentCA > 0) {
     ssrValue = sessionImpulse / physiology.currentCA;
     const rb = physiology.currentRB ?? 0;
-    ssrColor = classifySSR(ssrValue, rb);
+    ssrColor = classifyDifficultyRatio(ssrValue, rb);
 
-    const cuResult = computeCapacityUtilization(sessionImpulse, physiology.currentCA, sport as Sport);
-    cuValue = cuResult.cu;
-    cuColor = cuResult.difficulty;
-    cuLabel = cuResult.label;
   }
 
-  return { sessionImpulse, relativeIntensity, durationHours, ssrColor, ssrValue, cuColor, cuValue, cuLabel };
+  return { sessionImpulse, relativeIntensity, durationHours, ssrColor, ssrValue };
 }
 
 export default function WorkoutPreview({
@@ -229,14 +218,14 @@ export default function WorkoutPreview({
           <div className="flex flex-wrap gap-3">
             <MetricPill
               label="Session Impulse"
-              value={banister.sessionImpulse.toFixed(2)}
-              sublabel="hrs · rel. intensity"
+              value={banister.sessionImpulse?.toFixed(2) ?? "—"}
+              sublabel="planned estimate"
               accent="blue"
             />
             <MetricPill
               label="Rel. Intensity"
-              value={`${(banister.relativeIntensity * 100).toFixed(0)}%`}
-              sublabel="impulse / duration"
+              value={banister.relativeIntensity == null ? "—" : `${(banister.relativeIntensity * 100).toFixed(0)}%`}
+              sublabel="equivalent intensity"
               accent="amber"
             />
             <MetricPill
@@ -249,9 +238,6 @@ export default function WorkoutPreview({
             />
             {banister.ssrValue !== null && banister.ssrColor !== null && (
               <SSRPill ssr={banister.ssrValue} color={banister.ssrColor} />
-            )}
-            {banister.cuValue !== null && banister.cuColor !== null && banister.cuLabel !== null && (
-              <CUPill cu={banister.cuValue} color={banister.cuColor} label={banister.cuLabel} />
             )}
           </div>
         </div>
@@ -419,7 +405,6 @@ export default function WorkoutPreview({
     </div>
   );
 }
-
 type AccentColor = 'blue' | 'amber' | 'gray' | 'emerald';
 
 const ACCENT_STYLES: Record<AccentColor, { bg: string; text: string; label: string; dot: string }> = {
@@ -458,20 +443,6 @@ function SSRPill({ ssr, color }: { ssr: number; color: 'green' | 'yellow' | 'red
         <p className={`text-[10px] font-medium uppercase tracking-wide ${cls.text} opacity-70 font-body`}>SSR</p>
         <p className={`text-sm font-bold leading-tight ${cls.text} font-heading`}>{ssr.toFixed(2)}</p>
         <p className={`text-[10px] ${cls.text} opacity-70 font-body`}>{label} load</p>
-      </div>
-    </div>
-  );
-}
-
-function CUPill({ cu, color, label }: { cu: number; color: 'green' | 'yellow' | 'red'; label: string }) {
-  const cls = getDifficultyClasses(color);
-  return (
-    <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg ${cls.bg} border ${cls.border}`}>
-      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cls.dot}`} />
-      <div>
-        <p className={`text-[10px] font-medium uppercase tracking-wide ${cls.text} opacity-70 font-body`}>Capacity Utilization</p>
-        <p className={`text-sm font-bold leading-tight ${cls.text} font-heading`}>{cu.toFixed(2)}</p>
-        <p className={`text-[10px] ${cls.text} opacity-70 font-body`}>{label}</p>
       </div>
     </div>
   );

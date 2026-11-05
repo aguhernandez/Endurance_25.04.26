@@ -41,7 +41,7 @@ describe('session analysis capability blocks', () => {
     ['hr', 'Time series', '● HR'],
     ['hr', 'Derived indicators', '4.2'],
     ['laps', 'Laps and intervals', 'Synthetic interval'],
-    ['gps', 'Route and elevation', 'Ruta'],
+    ['gps', 'Route and elevation', 'Route and elevation'],
   ])('renders %s when capability is enabled', async (capability, heading, content) => {
     renderAnalysis({ [capability]: true });
     expect(await screen.findByText(heading)).toBeTruthy();

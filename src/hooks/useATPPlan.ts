@@ -136,6 +136,7 @@ export function useATPPlan(athleteId: string | null | undefined) {
     event_date: string;
     priority: 'A' | 'B' | 'C';
     notes?: string;
+    shared_event_id?: string | null;
   }) {
     if (!athleteId || !plan) return;
     setSaving(true);

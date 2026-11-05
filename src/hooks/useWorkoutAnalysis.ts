@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { analyzeWorkout, AnalysisInput, WorkoutAnalysisResult } from '../lib/workoutAnalysisEngine';
 import { getActivityRecords } from './useHubSync';
-import { reconstructCAAndAL } from '../lib/sessionDifficulty';
+import { calculateImpulse, ImpulseStatus, reconstructLoadState } from '../lib/impulseEngine';
 
 export interface StoredWorkoutAnalysis {
   id: string;
@@ -15,6 +15,7 @@ export interface StoredWorkoutAnalysis {
   classification: 'green' | 'yellow' | 'red';
   impulse_planned: number;
   impulse_actual: number;
+  impulse_actual_status?: ImpulseStatus;
   fitness: number;
   fatigue: number;
   form: number;
@@ -40,13 +41,25 @@ async function fetchCurrentBanister(
   const records = await getActivityRecords(athleteId, 120);
 
   const dailyImpulses = records
-    .filter(r => r.activity_date < sessionDate && r.impulse && r.impulse > 0)
-    .map(r => ({ date: r.activity_date as string, impulse: r.impulse as number }));
+    .filter(r => r.activity_date < sessionDate)
+    .map(r => {
+      const calculated = calculateImpulse({
+        sport: r.sport as 'cycling' | 'running' | 'swimming',
+        durationMinutes: (r.duration_seconds ?? 0) / 60,
+        normalizedPowerWatts: r.normalized_power_watts,
+        avgPowerWatts: r.avg_power_watts,
+        ftp: r.ftp_at_time,
+        avgPacePerKm: r.avg_pace_sec_per_km,
+        thresholdPacePerKm: null,
+      });
+      return { date: r.activity_date as string, impulse: calculated.impulse };
+    })
+    .filter((r): r is { date: string; impulse: number } => r.impulse != null && r.impulse > 0);
 
   if (dailyImpulses.length === 0) return { fitness: 0, fatigue: 0 };
 
-  const { ca, al } = reconstructCAAndAL(dailyImpulses, sessionDate);
-  return { fitness: ca, fatigue: al };
+  const state = reconstructLoadState(dailyImpulses, sessionDate);
+  return { fitness: state.ca, fatigue: state.al };
 }
 
 export async function triggerWorkoutAnalysis(

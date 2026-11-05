@@ -285,7 +285,7 @@ export default function MicrocycleAdaptationView({
   planStartDate,
   className = '',
 }: MicrocycleAdaptationViewProps) {
-  const { result, fatigueClassification, loading, error, compute } = useMicrocycleAdaptation(
+  const { result, loading, error, compute } = useMicrocycleAdaptation(
     athleteId,
     planStartDate
   );

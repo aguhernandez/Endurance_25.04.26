@@ -125,7 +125,7 @@ export default function WorkoutBuilder({
     (workout?.intensity_basis as IntensityBasis) || (getDefaultIntensityBasis(initialSport) as IntensityBasis)
   );
   const [subDiscipline] = useState<string>(workout?.sub_discipline || trainingType?.type || '');
-  const [elevationM, setElevationM] = useState<number>(workout?.elevation_m || trainingType?.elevationM || 0);
+  const [elevationM] = useState<number>(workout?.elevation_m || trainingType?.elevationM || 0);
   const [scheduledTime] = useState<string>(workout?.scheduled_time || trainingType?.scheduledTime || '');
   const toLocalDateStr = (d: Date) => {
     const y = d.getFullYear();

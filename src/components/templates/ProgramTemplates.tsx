@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Target, Zap, TrendingUp, Award, BookOpen, Filter, Search, Calendar, Users, ChevronRight, X, CheckCircle } from 'lucide-react';
+import { Target, Zap, TrendingUp, Award, BookOpen, Filter, Search, Calendar, Users, ChevronRight, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -454,9 +454,7 @@ interface AthleteSelectionModalProps {
   onClose: () => void;
 }
 
-function AthleteSelectionModal({ programId, onClose }: AthleteSelectionModalProps) {
-  const { t } = useLanguage();
-  const { profile } = useAuth();
+function AthleteSelectionModal({ onClose }: AthleteSelectionModalProps) {
   const [athletes, setAthletes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);

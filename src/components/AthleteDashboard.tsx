@@ -37,7 +37,8 @@ function PassportStatBox({ icon: Icon, label, value, color, bg }: {
 
 function PassportCard({ snapshot }: { snapshot: PassportSnapshot }) {
   const [expanded, setExpanded] = useState(false);
-  const p = snapshot.passport;
+  const p = snapshot.passport.active_passport;
+  if (!p) return null;
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
@@ -102,7 +103,7 @@ function PassportCard({ snapshot }: { snapshot: PassportSnapshot }) {
                 <span className={`font-semibold ${
                   p.force_velocity.fv_imbalance_direction === 'balanced' ? 'text-emerald-600' : 'text-amber-600'
                 }`}>
-                  {p.force_velocity.fv_imbalance_direction.replace('_', ' ')} ({p.force_velocity.fv_imbalance_percent}%)
+                  {p.force_velocity.fv_imbalance_direction?.replace('_', ' ')} ({p.force_velocity.fv_imbalance_percent}%)
                 </span>
               </p>
             </div>
@@ -113,7 +114,7 @@ function PassportCard({ snapshot }: { snapshot: PassportSnapshot }) {
   );
 }
 
-export default function AthleteDashboard({ onNavigate }: AthleteDashboardProps) {
+export default function AthleteDashboard(_props: AthleteDashboardProps) {
   const { profile, user } = useAuth();
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [athleteFTP, setAthleteFTP] = useState<number | null>(null);
@@ -198,7 +199,6 @@ export default function AthleteDashboard({ onNavigate }: AthleteDashboardProps) 
   }
 
   const completedSessions = sessions.filter(s => s.status === 'completed');
-  const plannedSessions = sessions.filter(s => s.status === 'planned');
 
   const stats = calculateWeeklyStats(sessions, athleteFTP);
 
@@ -303,7 +303,7 @@ export default function AthleteDashboard({ onNavigate }: AthleteDashboardProps) 
 
             <div className="card">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-600 dark:text-gray-400 text-sm font-body">Total Load</span>
+                <span className="text-gray-600 dark:text-gray-400 text-sm font-body">Weekly Impulse</span>
                 <Calendar className="w-5 h-5 text-primary-yellow" />
               </div>
               <p className="text-3xl font-bold text-primary-purple dark:text-white">{stats.totalLoad}</p>

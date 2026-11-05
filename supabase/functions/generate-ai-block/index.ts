@@ -37,6 +37,12 @@ interface ATPEvent {
   priority: "A" | "B" | "C";
 }
 
+interface ATPWeekOverride {
+  week_number: number;
+  week_start_date: string;
+  override_impulse: number;
+}
+
 interface AthletePhysiology {
   hr_max?: number;
   hr_rest?: number;
@@ -57,6 +63,13 @@ interface GenerateBlockRequest {
   sub_disciplines?: string[];
   session_duration_hours?: number;
   weekly_hours?: number;
+  planner_context?: {
+    events?: Array<Record<string, unknown>>;
+    availability?: Array<Record<string, unknown>>;
+    biological_passport_available?: boolean;
+    biological_passport_summary?: Record<string, unknown>;
+    fetched_at?: string;
+  };
 }
 
 interface LibraryWorkout {
@@ -104,9 +117,30 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 
+    // AI Block is no longer a public Edge Function. Hub's bridge validates the
+    // Hub JWT/relationship and calls this function with the Endurance service
+    // key over the server-to-server path.
+    const authorization = req.headers.get("Authorization");
+    if (authorization !== `Bearer ${supabaseServiceKey}` || req.headers.get("X-Endurance-Internal") !== "hub-bridge") {
+      return new Response(JSON.stringify({ error: "AI Block operations must go through the authorized Hub bridge" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body: GenerateBlockRequest = await req.json();
+    const operation = (body as GenerateBlockRequest & { action?: string }).action || "generate";
+
+    if (operation === "publish") {
+      const blockId = (body as GenerateBlockRequest & { block_id?: string }).block_id;
+      const publishedBy = (body as GenerateBlockRequest & { published_by?: string }).published_by;
+      if (!blockId || !publishedBy) return new Response(JSON.stringify({ error: "block_id and published_by are required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data, error } = await supabase.rpc("publish_ai_block", { p_block_id: blockId, p_published_by: publishedBy });
+      if (error) throw error;
+      return new Response(JSON.stringify(data), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const {
       athlete_id,
       coach_id,
@@ -120,6 +154,7 @@ Deno.serve(async (req: Request) => {
       sub_disciplines = [],
       session_duration_hours,
       weekly_hours,
+      planner_context,
     } = body;
 
     if (!athlete_id) {
@@ -146,16 +181,17 @@ Deno.serve(async (req: Request) => {
     endDate.setDate(endDate.getDate() + block_weeks * 7 - 1);
     const blockEndDate = endDate.toISOString().split("T")[0];
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+    const recentWindowDays = 49;
+    const recentWindowStart = new Date();
+    recentWindowStart.setDate(recentWindowStart.getDate() - recentWindowDays);
+    const recentWindowStartStr = recentWindowStart.toISOString().split("T")[0];
 
-    const [sessionsRes, atpPlanRes, physiologyRes, ftpRes] = await Promise.all([
+    const [sessionsRes, atpPlanRes, physiologyRes, ftpRes, overridesRes, adaptationsRes] = await Promise.all([
       supabase
         .from("training_sessions")
-        .select("session_date, sport, duration_minutes, perceived_effort, fatigue_level, avg_heart_rate, avg_power_watts, notes, status")
+        .select("session_date, sport, duration_minutes, perceived_effort, fatigue_level, avg_heart_rate, avg_power_watts, avg_pace_per_km, notes, status")
         .eq("athlete_id", athlete_id)
-        .gte("session_date", thirtyDaysAgoStr)
+        .gte("session_date", recentWindowStartStr)
         .order("session_date", { ascending: false })
         .limit(20),
       supabase
@@ -166,7 +202,7 @@ Deno.serve(async (req: Request) => {
         .maybeSingle(),
       supabase
         .from("athlete_physiology")
-        .select("hr_max, hr_rest, vo2max, lactate_threshold_hr")
+        .select("*")
         .eq("athlete_id", athlete_id)
         .maybeSingle(),
       supabase
@@ -174,6 +210,18 @@ Deno.serve(async (req: Request) => {
         .select("current_ftp_watts")
         .eq("athlete_id", athlete_id)
         .maybeSingle(),
+      supabase
+        .from("atp_week_overrides")
+        .select("week_number, week_start_date, override_impulse")
+        .eq("athlete_id", athlete_id)
+        .order("week_number", { ascending: true }),
+      supabase
+        .from("adaptation_log")
+        .select("week_number, week_start_date, proposed_impulse, load_delta_pct, rationale, safety_flags")
+        .eq("athlete_id", athlete_id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
 
     const recentSessions: TrainingSession[] = sessionsRes.data || [];
@@ -181,6 +229,8 @@ Deno.serve(async (req: Request) => {
     const events: ATPEvent[] = atpPlanRes.data?.atp_events || [];
     const physiology: AthletePhysiology | null = physiologyRes.data;
     const ftp: number | null = ftpRes.data?.current_ftp_watts || null;
+    const predictedImpulses: ATPWeekOverride[] = overridesRes.data || [];
+    const adaptationSuggestions = adaptationsRes.data || [];
 
     // Fetch library workouts for the selected sport
     const libraryQuery = supabase
@@ -231,8 +281,9 @@ Deno.serve(async (req: Request) => {
     const targetWeeklyMin = weekly_hours ? Math.round(weekly_hours * 60) : null;
 
     const contextSummary = {
-      sessions_last_30_days: recentSessions.length,
-      total_load_last_30_days: totalRecentLoad,
+      recent_window_days: recentWindowDays,
+      sessions_last_49_days: recentSessions.length,
+      total_load_last_49_days: totalRecentLoad,
       avg_rpe: avgRPE,
       avg_fatigue: avgFatigue,
       sport_distribution: sportDistribution,
@@ -248,9 +299,14 @@ Deno.serve(async (req: Request) => {
             rb_min: atpPlan.rb_min,
             rb_peak_target: atpPlan.rb_peak_target,
             ca_target: atpPlan.ca_target_main_event,
+            plan_start_date: atpPlan.plan_start_date,
+            tau_chronic: atpPlan.tau_chronic,
+            tau_acute: atpPlan.tau_acute,
           }
         : null,
       upcoming_events: upcomingEvents,
+      predicted_impulses: predictedImpulses,
+      adaptation_suggestions: adaptationSuggestions,
       block_weeks,
       block_start_date: startDate,
       focus: focus || "general",
@@ -260,6 +316,12 @@ Deno.serve(async (req: Request) => {
       weekly_hours,
       session_duration_hours,
       library_workouts_available: libraryWorkouts.length,
+      hub_context: planner_context || null,
+      prescription_limitations: [
+        !ftp ? "FTP ausente: keine targets expressed as %FTP werden inventados." : null,
+        !physiology?.hr_max ? "HR máximo ausente: keine HR-Zonen werden inventados." : null,
+        !(planner_context?.biological_passport_available) ? "Biological Passport no verificado por Hub." : null,
+      ].filter(Boolean),
     };
 
     const libraryWorkoutsList = libraryWorkouts
@@ -333,7 +395,7 @@ SESSIONS PER WEEK: ${sessions_per_week}
 ${isSingleSession ? `TARGET DURATION: ~${targetDurationMin} minutes` : `WEEKLY VOLUME TARGET: ~${targetWeeklyMin || "not specified"} minutes/week (${weekly_hours || "?"}h)`}
 BLOCK FOCUS: ${focus || "General fitness development"}
 
-ATHLETE DATA (last 30 days):
+ATHLETE DATA (last ${recentWindowDays} days):
 - Sessions: ${recentSessions.length} | Total time: ${totalRecentLoad} min | Avg RPE: ${avgRPE}/10 | Avg fatigue: ${avgFatigue}/10
 
 CURRENT FITNESS:
@@ -342,8 +404,19 @@ CURRENT FITNESS:
 BANISTER MODEL STATE:
 ${atpPlan ? `CA: ${atpPlan.ca_start} | AL: ${atpPlan.al_start} | RB: ${(atpPlan.ca_start - atpPlan.al_start).toFixed(1)} | RB target: ${atpPlan.rb_peak_target}` : "No ATP plan"}
 
+ATP PREDICTED IMPULSES:
+${predictedImpulses.length > 0 ? predictedImpulses.map((item) => `- Week ${item.week_number} (${item.week_start_date}): ${item.override_impulse}`).join("\n") : "No explicit weekly overrides"}
+
+PENDING ADAPTATION SUGGESTIONS:
+${adaptationSuggestions.length > 0 ? adaptationSuggestions.map((item) => `- Week ${item.week_number}: ${item.load_delta_pct}% — ${item.rationale}`).join("\n") : "No pending adaptation suggestions"}
+
 UPCOMING EVENTS:
 ${upcomingEvents.length > 0 ? upcomingEvents.map((e) => `- ${e.event_name} (${e.event_date}, Priority ${e.priority})`).join("\n") : "No upcoming events"}
+
+HUB SHARED CONTEXT:
+- Shared competitions: ${JSON.stringify(planner_context?.events ?? [])}
+- Shared availability windows (dates, weekdays and maximum minutes): ${JSON.stringify(planner_context?.availability ?? [])}
+- Biological Passport: ${JSON.stringify(planner_context?.biological_passport_summary ?? null)}
 
 ${additional_context ? `COACH/ATHLETE NOTES: ${additional_context}\n` : ""}
 TRAINING LIBRARY (use ONLY these workouts):
@@ -384,8 +457,32 @@ Respond ONLY with the JSON object.`;
       aiResponseRaw = openaiData.choices[0].message.content;
       generatedBlock = JSON.parse(aiResponseRaw);
     } else {
-      generatedBlock = generateFallbackBlock(startDate, block_weeks, contextSummary, sportDistribution);
+      generatedBlock = generateFallbackBlock(startDate, block_weeks, contextSummary, sportDistribution, libraryWorkouts, sessions_per_week);
       aiResponseRaw = JSON.stringify(generatedBlock);
+    }
+
+    const normalizedWeeks = generatedBlock.weeks.map((week) => ({
+      ...week,
+      sessions: week.sessions.map((session) => {
+        const libraryMatch = libraryWorkouts.find((workout) => workout.name === session.session_name && workout.sport === (session.sport === "triathlon" ? "cycling" : session.sport));
+        const hasPhysiology = session.intensity_basis === "power" ? Boolean(ftp) : session.intensity_basis === "hr" ? Boolean(physiology?.hr_max) : false;
+        return {
+          ...session,
+          library_workout_id: libraryMatch?.id ?? null,
+          template_validated: Boolean(libraryMatch),
+          estimated_impulse_source: libraryMatch ? "library" : "insufficient",
+          prescription_status: hasPhysiology || session.intensity_basis === "rpe" ? "supported" : "insufficient",
+          ...(hasPhysiology ? {} : { target_percent_ftp: undefined, target_zone: undefined }),
+        };
+      }),
+    }));
+
+    const invalidTemplates = normalizedWeeks.flatMap((week) => week.sessions.filter((session) => !session.template_validated));
+    if (invalidTemplates.length > 0) {
+      return new Response(JSON.stringify({ error: "The generated proposal contains sessions that are not validated against the workout library." }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const blockName = generatedBlock.block_name || `AI Training Block — ${startDate}`;
@@ -403,7 +500,7 @@ Respond ONLY with the JSON object.`;
         ai_response_raw: aiResponseRaw,
         status: "pending",
         context_summary: contextSummary,
-        weeks: generatedBlock.weeks,
+        weeks: normalizedWeeks,
         requested_by_role,
       })
       .select()
@@ -440,9 +537,48 @@ function generateFallbackBlock(
   startDate: string,
   blockWeeks: number,
   context: Record<string, unknown>,
-  sportDistribution: Record<string, number>
+  sportDistribution: Record<string, number>,
+  libraryWorkouts: LibraryWorkout[] = [],
+  sessionsPerWeek = 4,
 ) {
   const primarySport = Object.entries(sportDistribution).sort((a, b) => b[1] - a[1])[0]?.[0] || "cycling";
+
+  // The fallback is deliberately library-only. It must never invent a workout,
+  // target or load when the model/API is unavailable.
+  const candidates = libraryWorkouts
+    .filter((workout) => workout.sport === primarySport)
+    .sort((a, b) => (a.estimated_impulse ?? Number.MAX_SAFE_INTEGER) - (b.estimated_impulse ?? Number.MAX_SAFE_INTEGER));
+  const selected = candidates.slice(0, Math.min(Math.max(sessionsPerWeek, 1), candidates.length));
+  const safeWeeks = Array.from({ length: blockWeeks }, (_, w) => {
+    const weekStart = new Date(startDate);
+    weekStart.setDate(weekStart.getDate() + w * 7);
+    const sessions = selected.map((workout, index) => ({
+      day_of_week: [1, 3, 5, 6, 7][index % 5],
+      sport: workout.sport,
+      session_name: workout.name,
+      description: workout.description || "Workout de biblioteca; revisar antes de aprobar.",
+      intensity_basis: workout.intensity_basis || "",
+      estimated_duration_minutes: workout.estimated_duration_minutes ?? 0,
+      estimated_impulse: workout.estimated_impulse ?? 0,
+      category: "other",
+      key_points: ["Validar plantilla y zonas antes de aprobar"],
+    }));
+    return {
+      week_number: w + 1,
+      week_start_date: weekStart.toISOString().split("T")[0],
+      microcycle_type: (w + 1) % 4 === 0 ? "deload" : w === 2 ? "load_peak" : "load",
+      target_impulse: sessions.reduce((sum, session) => sum + session.estimated_impulse, 0),
+      weekly_notes: "Carga basada en plantillas de biblioteca; no se fuerza una carga objetivo de ATP.",
+      sessions,
+    };
+  });
+  return {
+    block_name: `AI Training Block — ${primarySport}`,
+    rationale: candidates.length > 0
+      ? "Fallback construido únicamente con plantillas de la biblioteca. No inventa FTP, umbrales ni Impulse."
+      : "No hay plantillas compatibles en la biblioteca. No se inventaron sesiones; se requiere selección manual.",
+    weeks: safeWeeks,
+  };
 
   const weeks = [];
   for (let w = 0; w < blockWeeks; w++) {

@@ -129,9 +129,9 @@ export function useHubPassport(): UseHubPassportResult {
         fetchedAt: new Date().toISOString(),
       };
 
-      setSnapshot(result);
-
       const entry = passport.active_passport;
+      if (!entry) throw new Error("No active Biological Passport found");
+      setSnapshot(result);
       const physiology = mapPassportToPhysiology(entry, localAthleteId);
       const { error: upsertError } = await supabase
         .from('athlete_physiology')
@@ -152,6 +152,7 @@ export function useHubPassport(): UseHubPassportResult {
 
       return result;
     } catch (err: any) {
+      setSnapshot(null);
       const raw = err.message || '';
       const msg = raw.includes('404') || raw.toLowerCase().includes('not found')
         ? 'Este atleta no tiene perfil en el Hub. El coach debe crear el perfil en la plataforma Hub antes de poder sincronizar el pasaporte biologico.'

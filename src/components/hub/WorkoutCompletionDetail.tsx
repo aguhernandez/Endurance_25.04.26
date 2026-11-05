@@ -13,7 +13,6 @@ import {
   BarChart2,
   Wind,
   ChevronDown,
-  ChevronUp,
   MessageSquare,
   Map,
   List,
@@ -62,10 +61,6 @@ function GpsMap({ points }: { points: HubGpsPoint[] }) {
   const W = 600, H = 280, PAD = 24;
 
   const projected = projectPoints(points, W, H, PAD);
-
-  const pathD = projected
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-    .join(' ');
 
   const start = projected[0];
   const end = projected[projected.length - 1];
@@ -383,7 +378,7 @@ export function WorkoutCompletionDetail({ sw, log, onBack }: {
   const elevation = sw.actual_elevation_gain_m ?? log?.elevation_gain_m ?? null;
   const calories = sw.actual_calories ?? log?.calories ?? null;
   const distanceKm = sw.actual_distance_km ?? log?.distance_km ?? null;
-  const impulse = sw.actual_impulse ?? log?.session_impulse ?? log?.tss ?? null;
+  const impulse = sw.actual_impulse ?? log?.session_impulse ?? null;
   const relIntensity = log?.relative_intensity ?? null;
 
   const gpsTrack = sw.gps_track ?? log?.gps_track ?? null;
@@ -395,12 +390,12 @@ export function WorkoutCompletionDetail({ sw, log, onBack }: {
   const hasLog = activityLog && activityLog.length > 0;
   const hasAnyData = compliance != null || avgHr != null || avgPower != null || rpe != null || athleteNotes || feeling;
 
-  const tabs: { id: Tab; label: string; available: boolean }[] = [
+  const tabs: { id: Tab; label: string; available: boolean }[] = ([
     { id: 'overview', label: 'Overview', available: true },
     { id: 'map', label: 'GPS Map', available: !!hasGps },
     { id: 'zones', label: 'Zones', available: !!hasZones },
     { id: 'log', label: 'Activity Log', available: !!hasLog },
-  ].filter(t => t.available);
+  ] satisfies { id: Tab; label: string; available: boolean }[]).filter(t => t.available);
 
   const sport = (sw as any).sport ?? log?.workout_type ?? null;
 

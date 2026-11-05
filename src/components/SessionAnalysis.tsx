@@ -122,7 +122,6 @@ export default function SessionAnalysis({ athleteId, executedId, onBack, canRevi
     [es ? 'Deriva de FC' : 'HR drift', first(derived.hr_drift, derived.heart_rate_drift)],
     [es ? 'Eficiencia' : 'Efficiency', derived.efficiency],
     ['IF', first(seriesData?.power_metrics?.if, derived.if)],
-    ['TSS', first(seriesData?.power_metrics?.tss, derived.tss)],
   ].filter(([, value]) => value != null);
   const laps = arr(first(session.laps, data.laps));
   const subjective = obj(first(session.subjective, session.athlete_feedback, session.feedback));

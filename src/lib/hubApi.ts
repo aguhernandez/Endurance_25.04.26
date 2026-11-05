@@ -18,6 +18,7 @@ export const RECENT_RECHECK_DAYS = 7;
 export const PULL_MIN_INTERVAL_MS = 10 * 60 * 1000;
 export const PAGE_SIZE = 200;
 const SESSION_REVIEW_FUNCTION = import.meta.env.VITE_HUB_SESSION_REVIEW_FUNCTION || 'endurance-satellite-bridge';
+const SHARED_CONTEXT_FUNCTION = import.meta.env.VITE_HUB_SHARED_CONTEXT_FUNCTION || 'endurance-shared-context';
 
 const SESSION_TOKEN_KEY = 'hub_session_token';
 
@@ -66,8 +67,10 @@ function getSessionToken(): string | null {
 }
 
 async function plannerHeaders(): Promise<HeadersInit> {
+  const sessionToken = getSessionToken();
   return {
     'X-Planner-Token': await getPlannerToken(),
+    ...(sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {}),
     'Content-Type': 'application/json',
   };
 }
@@ -81,21 +84,6 @@ function hubUserAuthorization(): string {
   return `Bearer ${token}`;
 }
 
-function sessionBearerHeaders(): HeadersInit {
-  const token = getSessionToken();
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-function bearerHeaders(): HeadersInit {
-  const token = getSessionToken();
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -108,8 +96,6 @@ async function handleResponse<T>(res: Response): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface HubAthleteProfile {
   athlete: {
@@ -190,10 +176,13 @@ export interface HubPassportEntry {
   training_age_years: number | null;
   version_number: number;
   created_at: string;
+  hydration?: { sweat_rate_l_h?: number | null; temperature_c?: number | null; humidity_percent?: number | null } | null;
+  heat_adaptation?: { adaptation_classification?: string | null; heat_adaptation_score?: number | null; total_sessions?: number | null } | null;
+  force_velocity?: { pmax_w?: number | null; pmax_w_kg?: number | null; fv_imbalance_direction?: string | null; fv_imbalance_percent?: number | null } | null;
 }
 
 export interface HubBiologicalPassport {
-  active_passport: HubPassportEntry;
+  active_passport: HubPassportEntry | null;
   passport_history: Array<{
     id: string;
     measurement_date: string;
@@ -251,7 +240,7 @@ export interface HubScheduledWorkout {
     workout_type: string;
     duration_minutes: number | null;
     description: string | null;
-  };
+  } | null;
   // Completion data (populated when status === 'completed')
   completed_at?: string | null;
   actual_duration_minutes?: number | null;
@@ -340,6 +329,51 @@ export interface HubTrainingSchedule {
   scheduled_workouts: HubScheduledWorkout[];
   completed_training_logs: HubCompletedLog[];
   weekly_loads: HubWeeklyLoad[];
+}
+
+export interface HubSharedEvent {
+  id: string;
+  athlete_id: string;
+  title: string;
+  description: string | null;
+  event_kind: 'competition' | 'objective' | 'test' | 'camp' | 'rest' | 'other';
+  priority: 'A' | 'B' | 'C' | null;
+  // A continuous Hub objective deliberately has no artificial event date.
+  event_date: string | null;
+  event_time: string | null;
+  sport: string | null;
+  sub_discipline: string | null;
+  distance_km: number | null;
+  location: string | null;
+  status: 'proposed' | 'approved' | 'published' | 'completed' | 'cancelled';
+  source_system: string;
+  external_key: string | null;
+  source_record_id: string | null;
+  source_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HubAvailabilityWindow {
+  id: string;
+  athlete_id: string;
+  day_of_week: number | null;
+  available_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  max_duration_minutes: number | null;
+  timezone: string;
+  is_rest_day: boolean;
+  allows_double_sessions: boolean;
+  preferences: Record<string, unknown>;
+  notes: string | null;
+  status: 'proposed' | 'approved' | 'published' | 'cancelled';
+  source_system: string;
+  external_key: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface HubEndurancePlanStep {
@@ -444,11 +478,24 @@ export async function hubGetCoachAthletes(coachHubId: string): Promise<HubCoachA
     { headers }
   );
   if (!res.ok) {
-    console.warn('[HubApi] coach-athletes failed', res.status);
-    return [];
+    throw new Error(`Hub no autorizó la consulta de atletas (${res.status})`);
   }
   const json = await res.json();
   return json.athletes || json.data || [];
+}
+
+export type HubImpulseAction = 'get-impulse-calculations' | 'upsert-impulse-calculation';
+
+export async function hubImpulseAction(
+  action: HubImpulseAction,
+  payload: Record<string, unknown>,
+): Promise<any> {
+  const res = await fetch(`${BASE_URL}/endurance-satellite-bridge`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ action, ...payload }),
+  });
+  return handleResponse<any>(res);
 }
 
 export type HubSessionAction = 'get-session-analysis' | 'get-session-timeseries' | 'list-review-inbox' | 'save-review';
@@ -497,6 +544,62 @@ export async function hubGetAthleteProfile(athleteId: string, fallbackEmail?: st
     }
   }
   return handleResponse<HubAthleteProfile>(res);
+}
+
+export async function hubGetSharedEvents(athleteId: string): Promise<HubSharedEvent[]> {
+  const res = await fetch(
+    `${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/shared-events?athlete_id=${encodeURIComponent(athleteId)}`,
+    { headers: await plannerHeaders() }
+  );
+  const json = await handleResponse<{ events?: HubSharedEvent[] }>(res);
+  return json.events || [];
+}
+
+export async function hubAIBlockAction<T = Record<string, unknown>>(
+  action: string,
+  payload: Record<string, unknown> = {}
+): Promise<T> {
+  const res = await fetch(`${BASE_URL}/endurance-satellite-bridge`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ action, ...payload }),
+  });
+  return handleResponse<T>(res);
+}
+
+export async function hubUpsertSharedEvent(
+  athleteId: string,
+  event: Omit<Partial<HubSharedEvent>, 'athlete_id'> & { title: string; external_key: string }
+): Promise<HubSharedEvent> {
+  const res = await fetch(`${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/shared-event?athlete_id=${encodeURIComponent(athleteId)}`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ ...event, athlete_id: athleteId }),
+  });
+  const json = await handleResponse<{ event: HubSharedEvent }>(res);
+  return json.event;
+}
+
+export async function hubGetAvailability(athleteId: string): Promise<HubAvailabilityWindow[]> {
+  const res = await fetch(
+    `${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/availability?athlete_id=${encodeURIComponent(athleteId)}`,
+    { headers: await plannerHeaders() }
+  );
+  const json = await handleResponse<{ availability?: HubAvailabilityWindow[] }>(res);
+  return json.availability || [];
+}
+
+export async function hubUpsertAvailability(
+  athleteId: string,
+  availability: Omit<Partial<HubAvailabilityWindow>, 'athlete_id'> & { external_key: string }
+): Promise<HubAvailabilityWindow> {
+  const res = await fetch(`${BASE_URL}/${SHARED_CONTEXT_FUNCTION}/availability?athlete_id=${encodeURIComponent(athleteId)}`, {
+    method: 'POST',
+    headers: await plannerHeaders(),
+    body: JSON.stringify({ ...availability, athlete_id: athleteId }),
+  });
+  const json = await handleResponse<{ availability: HubAvailabilityWindow }>(res);
+  return json.availability;
 }
 
 export async function hubGetBiologicalPassport(athleteId: string, fallbackEmail?: string): Promise<HubBiologicalPassport> {
@@ -576,6 +679,7 @@ export async function hubGetTrainingSchedule(
 }
 
 export interface HubActivityGpsPoint {
+  altitude_m?: number | null;
   lat: number;
   lng: number;
   altitude?: number | null;
@@ -710,10 +814,10 @@ export function hubActivityToWorkoutData(act: HubExternalActivity): import('../t
     name: act.name || 'Actividad',
     date: act.local_date,
     sport: act.sport_type || undefined,
-    distance: distanceKm,
-    distance_km: distanceKm,
-    duration: durationSec,
-    duration_seconds: durationSec,
+    distance: distanceKm ?? undefined,
+    distance_km: distanceKm ?? undefined,
+    duration: durationSec ?? undefined,
+    duration_seconds: durationSec ?? undefined,
     actual_duration_minutes: durationSec ? durationSec / 60 : null,
     actual_distance_km: distanceKm,
     actual_avg_hr: act.average_heartrate ?? null,
@@ -728,18 +832,18 @@ export function hubActivityToWorkoutData(act: HubExternalActivity): import('../t
     actual_tss: act.tss ?? null,
     rpe: act.rpe ?? null,
     athlete_notes: act.notes ?? null,
-    gps_track: gpsTrack.length > 0 ? gpsTrack : null,
-    map: gpsTrack.length > 0 ? gpsTrack : null,
-    heart_rate: gpsHr.length > 0 ? gpsHr : (hrArr.length > 0 ? hrArr : null),
-    heartRate: gpsHr.length > 0 ? gpsHr : (hrArr.length > 0 ? hrArr : null),
-    watts: gpsWatts.length > 0 ? gpsWatts : (wattsArr.length > 0 ? wattsArr : null),
-    power_watts: gpsWatts.length > 0 ? gpsWatts : (wattsArr.length > 0 ? wattsArr : null),
-    cadence: gpsCadence.length > 0 ? gpsCadence : (cadenceArr.length > 0 ? cadenceArr : null),
-    cadence_rpm: gpsCadence.length > 0 ? gpsCadence : (cadenceArr.length > 0 ? cadenceArr : null),
-    elevation: gpsElevation.length > 0 ? gpsElevation : null,
-    elevation_m: gpsElevation.length > 0 ? gpsElevation : null,
-    pace: paceArr.length > 0 ? paceArr : (avgPace ? [avgPace] : null),
-    pace_sec_per_km: paceArr.length > 0 ? paceArr : null,
+    gps_track: gpsTrack.length > 0 ? gpsTrack : undefined,
+    map: gpsTrack.length > 0 ? gpsTrack : undefined,
+    heart_rate: gpsHr.length > 0 ? gpsHr : (hrArr.length > 0 ? hrArr : undefined),
+    heartRate: gpsHr.length > 0 ? gpsHr : (hrArr.length > 0 ? hrArr : undefined),
+    watts: gpsWatts.length > 0 ? gpsWatts : (wattsArr.length > 0 ? wattsArr : undefined),
+    power_watts: gpsWatts.length > 0 ? gpsWatts : (wattsArr.length > 0 ? wattsArr : undefined),
+    cadence: gpsCadence.length > 0 ? gpsCadence : (cadenceArr.length > 0 ? cadenceArr : undefined),
+    cadence_rpm: gpsCadence.length > 0 ? gpsCadence : (cadenceArr.length > 0 ? cadenceArr : undefined),
+    elevation: gpsElevation.length > 0 ? gpsElevation : undefined,
+    elevation_m: gpsElevation.length > 0 ? gpsElevation : undefined,
+    pace: paceArr.length > 0 ? paceArr : (avgPace ? [avgPace] : undefined),
+    pace_sec_per_km: paceArr.length > 0 ? paceArr : undefined,
     splits: splits.length > 0 ? splits.map((s, i) => ({
       index: s.index ?? i + 1,
       label: s.label,
@@ -752,7 +856,7 @@ export function hubActivityToWorkoutData(act: HubExternalActivity): import('../t
       max_power_watts: s.max_power_watts,
       max_heart_rate: s.max_heart_rate,
       elevation_gain_m: s.elevation_gain_m,
-    })) : null,
+    })) : undefined,
     zone_distribution: (act.zone_distribution || []).map(z => ({
       zone: z.zone,
       name: z.name,
@@ -936,10 +1040,10 @@ export function hubCompletedLogToWorkoutData(log: HubCompletedLog): import('../t
     name: log.workout_name || log.workout_type || 'Actividad',
     date: log.training_date,
     sport: log.workout_type || undefined,
-    distance: log.distance_km ?? null,
-    distance_km: log.distance_km ?? null,
-    duration: log.duration_minutes ? log.duration_minutes * 60 : null,
-    duration_seconds: log.duration_minutes ? log.duration_minutes * 60 : null,
+    distance: log.distance_km ?? undefined,
+    distance_km: log.distance_km ?? undefined,
+    duration: log.duration_minutes ? log.duration_minutes * 60 : undefined,
+    duration_seconds: log.duration_minutes ? log.duration_minutes * 60 : undefined,
     actual_duration_minutes: log.duration_minutes ?? null,
     actual_distance_km: log.distance_km ?? null,
     actual_avg_hr: log.avg_heart_rate ?? null,
@@ -957,16 +1061,16 @@ export function hubCompletedLogToWorkoutData(log: HubCompletedLog): import('../t
     athlete_notes: log.athlete_notes ?? log.notes ?? null,
     athlete_feedback: log.athlete_feedback ?? null,
     athlete_feeling: log.athlete_feeling ?? null,
-    gps_track: gpsTrack.length > 0 ? gpsTrack : null,
-    map: gpsTrack.length > 0 ? gpsTrack : null,
-    heart_rate: gpsHr.length > 0 ? gpsHr : null,
-    heartRate: gpsHr.length > 0 ? gpsHr : null,
-    watts: gpsWatts.length > 0 ? gpsWatts : null,
-    power_watts: gpsWatts.length > 0 ? gpsWatts : null,
-    cadence: gpsCadence.length > 0 ? gpsCadence : null,
-    cadence_rpm: gpsCadence.length > 0 ? gpsCadence : null,
-    elevation: gpsElevation.length > 0 ? gpsElevation : null,
-    elevation_m: gpsElevation.length > 0 ? gpsElevation : null,
+    gps_track: gpsTrack.length > 0 ? gpsTrack : undefined,
+    map: gpsTrack.length > 0 ? gpsTrack : undefined,
+    heart_rate: gpsHr.length > 0 ? gpsHr : undefined,
+    heartRate: gpsHr.length > 0 ? gpsHr : undefined,
+    watts: gpsWatts.length > 0 ? gpsWatts : undefined,
+    power_watts: gpsWatts.length > 0 ? gpsWatts : undefined,
+    cadence: gpsCadence.length > 0 ? gpsCadence : undefined,
+    cadence_rpm: gpsCadence.length > 0 ? gpsCadence : undefined,
+    elevation: gpsElevation.length > 0 ? gpsElevation : undefined,
+    elevation_m: gpsElevation.length > 0 ? gpsElevation : undefined,
     zone_distribution: (log.zone_distribution || []).map(z => ({
       zone: z.zone,
       name: z.name,

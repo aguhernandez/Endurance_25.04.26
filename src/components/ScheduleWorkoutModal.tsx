@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Search, Clock, Bike, PersonStanding, Waves, Dumbbell, Repeat2, Check, Users, ChevronDown, Mountain, Filter, SlidersHorizontal } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Workout, WorkoutStep } from '../types/workout';
@@ -87,9 +87,8 @@ export default function ScheduleWorkoutModal({
       setSearch('');
       setExpandedId(null);
       setError(null);
-      setScheduledTime('');
-      setManualTime('');
-      setShowTimeDropdown(false);
+      setScheduledHour('');
+      setScheduledMinute('00');
       setFilterSport('all');
       setFilterCategory('all');
     }

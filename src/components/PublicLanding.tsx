@@ -440,7 +440,7 @@ export default function PublicLanding({ onLogin }: PublicLandingProps) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <MetricCard label={t('metric.trainingLoad')} value="342" unit="TSS" delta={t('metric.delta.load')} color="#3b82f6" delay={0} />
+                  <MetricCard label={t('metric.trainingLoad')} value="342" unit="Impulse" delta={t('metric.delta.load')} color="#3b82f6" delay={0} />
                   <MetricCard label={t('metric.recovery')} value="78" unit="%" delta={t('metric.delta.recovery')} color="#10b981" delay={100} />
                   <MetricCard label={t('metric.weeklyVolume')} value="14.2" unit="hrs" delta={t('metric.delta.volume')} color="#fdda36" delay={200} />
                   <MetricCard label={t('metric.readiness')} value="91" unit="%" delta={t('metric.delta.readiness')} color="#ef4444" delay={300} />

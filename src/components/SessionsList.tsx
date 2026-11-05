@@ -2,7 +2,7 @@ import { TrainingSession } from '../lib/supabase';
 import { calculateRelativeIntensity, calculateSessionLoad, formatPace, formatPacePer100m, getSportIcon } from '../lib/calculations';
 import { Calendar, Clock, TrendingUp, Zap, Heart } from 'lucide-react';
 import { useSessionDifficulty } from '../hooks/useSessionDifficulty';
-import { getDifficultyClasses, getDifficultyLabel } from '../lib/sessionDifficulty';
+import { getDifficultyClasses, getDifficultyLabel } from '../lib/impulseEngine';
 
 interface SessionsListProps {
   sessions: TrainingSession[];
@@ -155,7 +155,7 @@ export default function SessionsList({ sessions, ftp, athleteId }: SessionsListP
                 <div className="flex items-center space-x-2">
                   <TrendingUp className="w-4 h-4 text-gray-400" />
                   <div>
-                    <p className="text-xs text-gray-500">Load</p>
+                    <p className="text-xs text-gray-500">Impulse</p>
                     <p className="font-semibold text-[#514163]">{sessionLoad}</p>
                   </div>
                 </div>
@@ -178,20 +178,6 @@ export default function SessionsList({ sessions, ftp, athleteId }: SessionsListP
                     <span className={`ml-1.5 font-bold ${diffCls!.text}`}>{metrics.ssr.ssr.toFixed(2)}</span>
                   </div>
                 </div>
-                {(() => {
-                  const cuCls = getDifficultyClasses(metrics.cu.difficulty);
-                  return (
-                    <div className={`flex items-center gap-5 px-3 py-2 rounded-lg text-xs ${cuCls.bg} border ${cuCls.border}`}>
-                      <div>
-                        <span className="text-gray-500">CU</span>
-                        <span className={`ml-1.5 font-bold ${cuCls.text}`}>{metrics.cu.cu.toFixed(2)}</span>
-                      </div>
-                      <div>
-                        <span className={`text-xs ${cuCls.text}`}>{metrics.cu.label}</span>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             )}
 

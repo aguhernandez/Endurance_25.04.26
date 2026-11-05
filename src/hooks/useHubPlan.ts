@@ -10,14 +10,9 @@ import {
   HubTrainingLogPayload,
 } from '../lib/hubApi';
 import { Workout, WorkoutStep } from '../types/workout';
-import {
-  calculateWorkoutImpulseFromSteps,
-  calculateSessionImpulse,
-  reconstructCAAndAL,
-  classifySSR,
-  DailyImpulseEntry,
-  DifficultyColor,
-} from '../lib/sessionDifficulty';
+import { DailyImpulseEntry, DifficultyColor, ImpulseResult, IMPULSE_ALGORITHM_VERSION } from '../lib/impulseEngine';
+import { calculatePlannedSteps, calculateImpulse, reconstructLoadState, calculateDifficulty } from '../lib/impulseEngine';
+import { persistImpulseCalculation } from '../lib/impulsePersistence';
 
 export interface PushPlanResult {
   success: boolean;
@@ -262,7 +257,7 @@ function computeWorkoutImpulse(
   steps: WorkoutStep[],
   physiology: AthletePhysiologyCache,
   ftp: number | null
-): number {
+): number | null {
   const thresholdPace =
     workout.sport === 'running'
       ? physiology.runThresholdPacePerKm
@@ -270,14 +265,13 @@ function computeWorkoutImpulse(
       ? physiology.swimThresholdPacePerKm
       : null;
 
-  return calculateWorkoutImpulseFromSteps({
+  return calculatePlannedSteps({
     steps,
     sport: workout.sport,
     ftp,
     thresholdPacePerKm: thresholdPace,
     zoneSystem: physiology.zoneSystem,
-    fallbackDurationMinutes: workout.estimated_duration_minutes ?? 60,
-  });
+  }).impulse;
 }
 
 async function loadAthleteCompletedImpulses(
@@ -295,7 +289,7 @@ async function loadAthleteCompletedImpulses(
 
     const { data: sessions } = await supabase
       .from('training_sessions')
-      .select('session_date, sport, duration_minutes, avg_power_watts, avg_pace_per_km, perceived_effort, status')
+      .select('id, session_date, sport, duration_minutes, avg_power_watts, avg_pace_per_km, perceived_effort, status')
       .eq('athlete_id', athleteId)
       .eq('status', 'completed')
       .gte('session_date', cutoffStr)
@@ -312,18 +306,41 @@ async function loadAthleteCompletedImpulses(
           ? physiology.swimThresholdPacePerKm
           : null;
 
-      const impulse = calculateSessionImpulse({
+      const impulse = calculateImpulse({
         durationMinutes: s.duration_minutes,
         sport: s.sport,
         avgPowerWatts: s.avg_power_watts,
         ftp,
         avgPacePerKm: s.avg_pace_per_km,
         thresholdPacePerKm: thresholdPace,
-        perceivedEffort: s.perceived_effort,
       });
 
+      const persisted = await persistImpulseCalculation({
+        athlete_id: athleteId,
+        source_kind: 'training_session',
+        source_id: s.id,
+        activity_dedupe_key: `training_session:${s.id}`,
+        calculation_context: 'actual',
+        activity_date: s.session_date,
+        sport: s.sport,
+        duration_seconds: s.duration_minutes * 60,
+        impulse: impulse.impulse,
+        method: impulse.method ?? 'insufficient',
+        status: impulse.status,
+        algorithm_version: IMPULSE_ALGORITHM_VERSION,
+        reason: impulse.reason ?? null,
+        input_snapshot: {
+          durationMinutes: s.duration_minutes,
+          avgPowerWatts: s.avg_power_watts,
+          avgPacePerKm: s.avg_pace_per_km,
+          ftp,
+          thresholdPacePerKm: thresholdPace,
+        },
+      });
+      if (persisted.error) throw persisted.error;
+
       const existing = map.get(s.session_date) ?? 0;
-      map.set(s.session_date, existing + impulse);
+      if (impulse.impulse != null) map.set(s.session_date, existing + impulse.impulse);
     }
 
     return Array.from(map.entries()).map(([date, impulse]) => ({ date, impulse }));
@@ -342,16 +359,13 @@ function computeDifficultyForWorkout(
   if (!workout.scheduled_date) return null;
 
   const impulse = computeWorkoutImpulse(workout, steps, physiology, ftp);
+  if (impulse == null) return null;
 
   const impulsesBeforeWorkout = dailyImpulses.filter(d => d.date < workout.scheduled_date!);
   if (impulsesBeforeWorkout.length === 0) return null;
 
-  const { ca, al } = reconstructCAAndAL(impulsesBeforeWorkout, workout.scheduled_date);
-  if (ca <= 0) return null;
-
-  const rb = ca - al;
-  const ssr = impulse / ca;
-  return classifySSR(ssr, rb);
+  const state = reconstructLoadState(impulsesBeforeWorkout, workout.scheduled_date);
+  return calculateDifficulty(impulse, state).difficulty;
 }
 
 export interface UseHubPlanResult {
@@ -446,12 +460,42 @@ export function useHubPlan(): UseHubPlanResult {
       }
 
       for (const [weekStart, weekWorkouts] of weekMap.entries()) {
+        const persistenceTasks: Promise<{ error: Error | null }>[] = [];
         const days: HubEndurancePlanDay[] = weekWorkouts.map(w => {
           const steps = stepsByWorkout.get(w.id) || [];
           const completed = w.status === 'completed';
           const targetZones = extractTargetZones(steps);
 
           const computedPlannedImpulse = computeWorkoutImpulse(w, steps, physiology, ftp);
+          const plannedResult: ImpulseResult = calculatePlannedSteps({
+            steps,
+            sport: w.sport,
+            ftp,
+            thresholdPacePerKm: w.sport === 'running'
+              ? physiology.runThresholdPacePerKm
+              : w.sport === 'swimming'
+              ? physiology.swimThresholdPacePerKm
+              : null,
+            zoneSystem: physiology.zoneSystem,
+          });
+          persistenceTasks.push(
+            persistImpulseCalculation({
+              athlete_id: localAthleteId,
+              source_kind: 'workout',
+              source_id: w.id,
+              activity_dedupe_key: `workout:${w.id}`,
+              calculation_context: 'planned',
+              activity_date: w.scheduled_date || new Date().toISOString().split('T')[0],
+              sport: w.sport,
+              duration_seconds: (w.estimated_duration_minutes || 0) * 60,
+              impulse: plannedResult.impulse,
+              method: plannedResult.method ?? 'insufficient',
+              status: plannedResult.status,
+              algorithm_version: IMPULSE_ALGORITHM_VERSION,
+              reason: plannedResult.reason ?? null,
+              input_snapshot: { workoutId: w.id, steps, ftp, zoneSystem: physiology.zoneSystem },
+            })
+          );
           const plannedImpulse = computedPlannedImpulse;
           const actualImpulse = completed ? (w.actual_impulse ?? null) : null;
 
@@ -471,7 +515,7 @@ export function useHubPlan(): UseHubPlanResult {
           const notesStr = [diffNotes, w.notes].filter(Boolean).join(' | ') || null;
 
           const dbUpdates: Record<string, unknown> = {};
-          if (computedPlannedImpulse && computedPlannedImpulse !== w.estimated_impulse) {
+          if (computedPlannedImpulse != null && computedPlannedImpulse !== w.estimated_impulse) {
             dbUpdates.estimated_impulse = computedPlannedImpulse;
           }
           if (freshDifficultyColor && freshDifficultyColor !== w.difficulty_color) {
@@ -527,6 +571,13 @@ export function useHubPlan(): UseHubPlanResult {
           notes: null,
         };
 
+        const persisted = await Promise.all(persistenceTasks);
+        const persistenceError = persisted.find(item => item.error)?.error;
+        if (persistenceError) {
+          result.errors.push(`Week ${weekStart}: ${persistenceError.message}`);
+          continue;
+        }
+
         try {
           await hubPushEndurancePlan(hubAthleteId, payload);
           result.pushedWeeks++;
@@ -539,6 +590,7 @@ export function useHubPlan(): UseHubPlanResult {
       for (const w of completedWorkouts) {
         const steps = stepsByWorkout.get(w.id) || [];
         const actualImpulse = w.actual_impulse ?? computeWorkoutImpulse(w, steps, physiology, ftp);
+        if (actualImpulse == null) continue;
         const durationHours = (w.actual_duration_minutes || w.estimated_duration_minutes || 60) / 60;
         const relativeIntensity = durationHours > 0 ? actualImpulse / durationHours : null;
 

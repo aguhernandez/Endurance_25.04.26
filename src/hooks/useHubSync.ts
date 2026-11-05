@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { AthletePhysiology } from '../types/workout';
+import { calculateAndPersistImpulseCalculation } from '../lib/impulsePersistence';
 
 export interface ActivityRecordPayload {
   athlete_id: string;
@@ -27,36 +28,49 @@ export interface ActivityRecordPayload {
   fatigue_level?: number;
   notes?: string;
   impulse?: number;
-}
-
-function calcImpulse(payload: ActivityRecordPayload): number {
-  const durationMin = payload.duration_seconds / 60;
-  if (payload.avg_heart_rate_bpm) {
-    return Math.round(durationMin * payload.avg_heart_rate_bpm * 0.64 * 1.92);
-  }
-  if (payload.avg_power_watts && payload.ftp_at_time) {
-    const if_ = payload.avg_power_watts / payload.ftp_at_time;
-    return Math.round((payload.duration_seconds * payload.avg_power_watts * if_) / (payload.ftp_at_time * 3600) * 100);
-  }
-  if (payload.perceived_effort) {
-    return Math.round(durationMin * payload.perceived_effort * 1.5);
-  }
-  return 0;
+  activity_dedupe_key?: string;
 }
 
 export async function pushActivityRecord(payload: ActivityRecordPayload): Promise<{ success: boolean; error?: string }> {
   try {
-    const impulse = payload.impulse ?? calcImpulse(payload);
+    const { activity_dedupe_key, impulse: _legacyImpulse, ...rawPayload } = payload;
 
-    const { error } = await supabase
+    const { data: inserted, error } = await supabase
       .from('activity_records')
       .insert({
-        ...payload,
+        ...rawPayload,
         source_satellite: payload.source_satellite ?? 'lab',
-        impulse,
-      });
+      })
+      .select('id')
+      .single();
 
     if (error) throw error;
+
+    const sport = ['cycling', 'running', 'swimming'].includes(payload.sport)
+      ? payload.sport as 'cycling' | 'running' | 'swimming'
+      : 'cycling';
+    const dedupeKey = activity_dedupe_key
+      ?? `activity:${payload.athlete_id}:${payload.activity_date}:${payload.sport}:${Math.round((payload.duration_seconds / 60) * 1000) / 1000}:${payload.avg_power_watts ?? ''}:${payload.avg_pace_sec_per_km ?? ''}`;
+    const persisted = await calculateAndPersistImpulseCalculation({
+      athleteId: payload.athlete_id,
+      sourceKind: 'activity_record',
+      sourceId: inserted.id,
+      activityDedupeKey: dedupeKey,
+      calculationContext: 'actual',
+      activityDate: payload.activity_date,
+      sport,
+      durationSeconds: payload.duration_seconds,
+      input: {
+        sport,
+        durationMinutes: payload.duration_seconds / 60,
+        normalizedPowerWatts: payload.normalized_power_watts,
+        avgPowerWatts: payload.avg_power_watts,
+        ftp: payload.ftp_at_time,
+        avgPacePerKm: payload.avg_pace_sec_per_km,
+      },
+    });
+    if (persisted.error) throw persisted.error;
+
     return { success: true };
   } catch (err: any) {
     console.error('HUB sync: failed to push activity record', err);

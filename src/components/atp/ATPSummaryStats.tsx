@@ -8,7 +8,7 @@ interface ATPSummaryStatsProps {
   rbPeakTarget: number;
 }
 
-export default function ATPSummaryStats({ weeks, caStart, rbMin, rbPeakTarget }: ATPSummaryStatsProps) {
+export default function ATPSummaryStats({ weeks, caStart, rbMin }: ATPSummaryStatsProps) {
   if (weeks.length === 0) return null;
 
   const lastWeek = weeks[weeks.length - 1];

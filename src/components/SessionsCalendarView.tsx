@@ -8,7 +8,7 @@ import WeeklyAtpDrawer from './WeeklyAtpDrawer';
 import { Workout, WorkoutStep, Tag } from '../types/workout';
 import { getSportIcon, formatPace, formatPacePer100m } from '../lib/calculations';
 import { useSessionDifficulty } from '../hooks/useSessionDifficulty';
-import { getDifficultyClasses, getDifficultyLabel, SSRResult } from '../lib/sessionDifficulty';
+import { getDifficultyClasses, getDifficultyLabel, SSRResult } from '../lib/impulseEngine';
 import { WeeklySummaryData } from '../lib/weeklySummary';
 import { WorkoutDetailModal } from './detail/WorkoutDetailModal';
 import { ActivityDetailModal } from './training/ActivityDetailModal';
@@ -251,7 +251,7 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
   const metricWorkout = workout as Workout & { distance_km?: number; estimated_distance_km?: number; actual_distance_km?: number; actual_tss?: number; tss?: number };
   const durationMinutes = workout.actual_duration_minutes ?? workout.estimated_duration_minutes;
   const distanceKm = Number(hubData.actual_distance_km ?? hubData.distance_km ?? metricWorkout.actual_distance_km ?? metricWorkout.estimated_distance_km ?? metricWorkout.distance_km);
-  const tss = Number(hubData.actual_tss ?? metricWorkout.actual_tss ?? metricWorkout.tss);
+  const impulse = Number(hubData.actual_impulse ?? workout.actual_impulse ?? workout.estimated_impulse);
   const steps = workout.steps ?? [];
   const durationLabel = formatWorkoutDuration(durationMinutes);
 
@@ -320,8 +320,7 @@ function WorkoutPill({ workout, difficulty, onEdit, onDuplicate, onCopy, onDelet
       <div className={`mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-semibold ${compact ? 'text-[10px]' : 'text-xs'}`}>
         {durationLabel && <span className="inline-flex items-center gap-1"><Clock size={compact ? 10 : 12} className="opacity-60"/>{durationLabel}</span>}
         {Number.isFinite(distanceKm) && distanceKm > 0 && <span>{distanceKm.toFixed(1)} km</span>}
-        {Number.isFinite(tss) && tss > 0 && <span>{Math.round(tss)} TSS</span>}
-        {!Number.isFinite(tss) && workout.estimated_impulse != null && <span>{Math.round(workout.estimated_impulse)} carga</span>}
+        {Number.isFinite(impulse) && impulse > 0 && <span>{Math.round(impulse)} Impulse</span>}
       </div>
       <WorkoutProfile steps={steps} compact={compact} />
 
@@ -1503,7 +1502,7 @@ export default function SessionsCalendarView({
                           const wColors = diffCls ?? getSportColor(workout.sport);
                           const hubData = (workout.hub_data ?? {}) as Record<string, unknown>;
                           const distanceKm = Number(hubData.actual_distance_km ?? hubData.distance_km ?? (workout as any).estimated_distance_km ?? (workout as any).distance_km);
-                          const actualTss = Number(hubData.actual_tss ?? (workout as any).actual_tss ?? (workout as any).tss);
+                          const actualImpulse = Number(hubData.actual_impulse ?? workout.actual_impulse ?? workout.estimated_impulse);
                           return (
                           <div key={workout.id} className={`border rounded-xl p-4 ${wColors.border} ${wColors.bg}`}>
                             <div className="flex items-start justify-between">
@@ -1522,7 +1521,7 @@ export default function SessionsCalendarView({
                                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-gray-700 dark:text-gray-200">
                                   {formatWorkoutDuration(workout.actual_duration_minutes ?? workout.estimated_duration_minutes) && <span className="inline-flex items-center gap-1"><Clock size={13} className="text-gray-400"/>{formatWorkoutDuration(workout.actual_duration_minutes ?? workout.estimated_duration_minutes)}</span>}
                                   {Number.isFinite(distanceKm) && distanceKm > 0 && <span>{distanceKm.toFixed(1)} km</span>}
-                                  {Number.isFinite(actualTss) && actualTss > 0 ? <span>{Math.round(actualTss)} TSS</span> : workout.estimated_impulse != null && <span>{Math.round(workout.estimated_impulse)} carga</span>}
+                                  {Number.isFinite(actualImpulse) && actualImpulse > 0 && <span>{Math.round(actualImpulse)} Impulse</span>}
                                 </div>
                               </div>
                               <div className="flex gap-1">

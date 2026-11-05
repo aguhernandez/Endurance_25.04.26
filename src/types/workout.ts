@@ -45,6 +45,7 @@ export interface WorkoutStep {
 export type WorkoutStatus = 'planned' | 'in_progress' | 'completed' | 'skipped';
 
 export interface Workout {
+  hub_workout_id?: string | null;
   id: string;
   coach_id: string;
   athlete_id?: string;
@@ -243,6 +244,8 @@ export interface ATPEvent {
   event_date: string;
   priority: 'A' | 'B' | 'C';
   notes?: string;
+  /** Hub-owned event ID when this local ATP row is only a planning projection. */
+  shared_event_id?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -898,8 +898,6 @@ function aggregateDeviations(sessions: RecentSession[]) {
 
 // ─── Session-Level Adjustment Logic ──────────────────────────────────────────
 
-const INTENSITY_REMOVE_THRESHOLD_FATIGUED = 0.90;
-const INTENSITY_REMOVE_THRESHOLD_OVERREACHED = 0.85;
 const DURATION_REDUCTION_FATIGUED = 0.85;
 const DURATION_REDUCTION_OVERREACHED = 0.70;
 const DURATION_SIMPLIFY = 0.90;

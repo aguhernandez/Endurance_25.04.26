@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useATPPlan } from '../hooks/useATPPlan';
 import { runATPSimulation } from '../lib/banisterEngine';
@@ -16,12 +15,12 @@ interface WeeklySummaryViewProps {
 }
 
 export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySummaryViewProps) {
-  const { profile } = useAuth();
   const { plan: atpPlan, events: atpEvents, engineOverrides, loading: atpLoading } = useATPPlan(athleteId);
 
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
   const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummaryData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [ftp, setFtp] = useState<number | null>(null);
   const [physiology, setPhysiology] = useState<PhysiologyData | null>(null);
   const [athleteName, setAthleteName] = useState<string>('Athlete');
@@ -62,6 +61,7 @@ export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySumma
     if (atpWeeks.length === 0 || completedSessions.length === 0 && plannedWorkouts.length === 0 && !ftp) return;
     const today = new Date().toISOString().split('T')[0];
     if (atpWeeks.length > 0) {
+      try {
       const summaries = computeWeeklySummaries(
         atpWeeks,
         completedSessions,
@@ -71,10 +71,12 @@ export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySumma
         today
       );
       setWeeklySummaries(summaries);
+      setSummaryError(null);
       const currentWeekIdx = summaries.findIndex(w => w.isCurrentWeek);
       if (currentWeekIdx >= 0) {
         setCurrentWeekIndex(currentWeekIdx);
       }
+      } catch (error) { setWeeklySummaries([]); setSummaryError(error instanceof Error ? error.message : "Unable to calculate summary"); }
     }
   }, [atpWeeks, completedSessions, plannedWorkouts, ftp, physiology]);
 
@@ -148,7 +150,8 @@ export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySumma
         }
       }
     } catch (err) {
-      console.error('Error loading weekly summary data:', err);
+      setWeeklySummaries([]);
+      setSummaryError(err instanceof Error ? err.message : 'Unable to calculate summary');
     } finally {
       setLoading(false);
     }
@@ -178,6 +181,8 @@ export default function WeeklySummaryView({ athleteId, onNavigate }: WeeklySumma
       </div>
     );
   }
+
+  if (summaryError) return <p role="alert">{summaryError}</p>;
 
   if (weeklySummaries.length === 0) {
     return (

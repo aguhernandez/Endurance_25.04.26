@@ -50,7 +50,7 @@ function LegendBar({ color, label }: { color: string; label: string }) {
 }
 
 export default function ATPChart({
-  weeks, days, events, rbMin, rbPeakTarget,
+  weeks, days, rbMin, rbPeakTarget,
   weekOverrideMap,
   onWeekOverride,
   onWeekOverrideClear,

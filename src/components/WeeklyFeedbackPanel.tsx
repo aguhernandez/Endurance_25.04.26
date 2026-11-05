@@ -71,6 +71,7 @@ export default function WeeklyFeedbackPanel({
     try {
       const payload = {
         athlete_id: athleteId,
+        ...(isCoach ? { coach_id: profile.id } : {}),
         week_number: weekNumber,
         week_start_date: weekStartDate,
         week_end_date: weekEndDate,
@@ -81,9 +82,6 @@ export default function WeeklyFeedbackPanel({
         ...adjustment,
       };
 
-      if (isCoach) {
-        payload.coach_id = profile.id;
-      }
 
       const { error } = await supabase
         .from('weekly_adjustments')

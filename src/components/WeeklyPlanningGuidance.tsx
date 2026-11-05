@@ -25,9 +25,6 @@ interface WeeklyPlanningGuidanceProps {
 }
 
 export default function WeeklyPlanningGuidance({
-  weekStartDate,
-  athleteId,
-  athleteName,
   targetWeeklyImpulse,
   targetCA,
   targetAF,

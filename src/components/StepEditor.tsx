@@ -44,16 +44,6 @@ const RPE_COLORS = [
 
 const RPE_LABELS = ['', 'Very Easy', 'Easy', 'Easy', 'Moderate', 'Moderate', 'Hard', 'Hard', 'Very Hard', 'Very Hard', 'Max'];
 
-const ZONE_BG: Record<number, string> = {
-  1: 'bg-gray-100 border-gray-300 text-gray-700',
-  2: 'bg-blue-100 border-blue-300 text-blue-700',
-  3: 'bg-emerald-100 border-emerald-300 text-emerald-700',
-  4: 'bg-yellow-100 border-yellow-300 text-yellow-700',
-  5: 'bg-orange-100 border-orange-300 text-orange-700',
-  6: 'bg-red-100 border-red-300 text-red-700',
-  7: 'bg-pink-100 border-pink-300 text-pink-700',
-};
-
 function formatSeconds(v: number) {
   const h = Math.floor(v / 3600);
   const m = Math.floor((v % 3600) / 60);
@@ -433,7 +423,7 @@ interface ZoneSectionProps {
 }
 
 function ZoneSection({ label, zones, selectedZone, onSelect, noZonesMessage, extraFields }: ZoneSectionProps) {
-  const [open, setOpen] = useState(false);
+  const [, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -444,7 +434,6 @@ function ZoneSection({ label, zones, selectedZone, onSelect, noZonesMessage, ext
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const sel = zones.find(z => z.zone === selectedZone);
 
   if (zones.length === 0) {
     return (

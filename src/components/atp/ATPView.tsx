@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Users, Sparkles, Lock, Info, Trash2, RotateCcw } from 'lucide-react';
 import { useAuth, hasAIAccess } from '../../contexts/AuthContext';
 import { useATPPlan } from '../../hooks/useATPPlan';
@@ -13,8 +13,9 @@ import ATPSummaryStats from './ATPSummaryStats';
 import AIBlockGenerator from '../ai/AIBlockGenerator';
 import AdaptationPanel from './AdaptationPanel';
 import MicrocycleAdaptationView from './MicrocycleAdaptationView';
-import { supabase } from '../../lib/supabase';
 import { useCoachAthletes } from '../../hooks/useCoachAthletes';
+import { useHubSharedContext } from '../../hooks/useHubSharedContext';
+import { HubSharedEvent } from '../../lib/hubApi';
 
 interface AthleteOption {
   id: string;
@@ -56,8 +57,7 @@ export default function ATPView({ isCoach }: ATPViewProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const coachHubId = isCoach ? user?.id : undefined;
-  const assignedAthletes = isCoach ? (user as any)?.assigned_athletes as string[] | undefined : undefined;
-  const { athletes: hubAthletes } = useCoachAthletes(coachHubId, assignedAthletes);
+  const { athletes: hubAthletes } = useCoachAthletes(coachHubId);
   const athletes: AthleteOption[] = hubAthletes.map(a => ({ id: a.id, full_name: a.full_name, email: a.email }));
 
   const athleteId = isCoach ? (selectedAthleteId || profile?.id || null) : (profile?.id || null);
@@ -70,6 +70,11 @@ export default function ATPView({ isCoach }: ATPViewProps) {
     addEvent, removeEvent,
     setWeekOverride, clearWeekOverride, clearAllOverrides,
   } = useATPPlan(athleteId);
+  const sharedContext = useHubSharedContext();
+
+  useEffect(() => {
+    if (athleteId) void sharedContext.refresh(athleteId);
+  }, [athleteId, sharedContext.refresh]);
 
   const { settings: aiSettings } = useAIBlock(null);
 
@@ -128,6 +133,30 @@ export default function ATPView({ isCoach }: ATPViewProps) {
     await deletePlan();
     setConfirmDelete(false);
     setLiveParams(null);
+  };
+
+  const selectSharedEvent = async (event: HubSharedEvent) => {
+    if (!event.event_date) return;
+    await addEvent({
+      event_name: event.title,
+      event_date: event.event_date,
+      priority: event.priority || 'C',
+      notes: event.description || undefined,
+      shared_event_id: event.id,
+    });
+  };
+
+  const createSharedEvent = async (event: { title: string; event_date: string; priority: 'A' | 'B' | 'C'; notes?: string; external_key: string }) => {
+    if (!athleteId) return;
+    const saved = await sharedContext.upsertEvent(athleteId, {
+      title: event.title,
+      event_date: event.event_date,
+      event_kind: 'competition',
+      priority: event.priority,
+      description: event.notes || null,
+      external_key: event.external_key,
+    });
+    await selectSharedEvent(saved);
   };
 
   const noAEvents = events.filter(e => e.priority === 'A').length === 0;
@@ -248,6 +277,10 @@ export default function ATPView({ isCoach }: ATPViewProps) {
             onAdd={addEvent}
             onRemove={removeEvent}
             saving={saving}
+            sharedEvents={sharedContext.events}
+            sharedLoading={sharedContext.loading}
+            onCreateShared={createSharedEvent}
+            onSelectShared={selectSharedEvent}
           />
           <ATPParamsPanel
             plan={plan}

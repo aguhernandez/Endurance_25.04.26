@@ -7,7 +7,7 @@ interface WeeklyAtpDrawerProps {
   onClose: () => void;
 }
 
-function getLoadStatus(planned: number, actual: number, projected: number) {
+function getLoadStatus(planned: number, _actual: number, projected: number) {
   const pct = planned > 0 ? (projected / planned) * 100 : 0;
   if (pct >= 95 && pct <= 115) return { label: 'On Track', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20', icon: CheckCircle };
   if (pct < 80) return { label: 'Under Load', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20', icon: AlertTriangle };
@@ -150,7 +150,6 @@ export default function WeeklyAtpDrawer({ week, onClose }: WeeklyAtpDrawerProps)
                 {(() => {
                   const impulseGap = week.plannedTotalImpulse - week.projectedTotalImpulse;
                   const rb = week.actualEndRB || week.projectedEndRB;
-                  const rbStatus = getRBStatus(rb);
 
                   if (impulseGap > 20) {
                     return <p className="text-xs text-blue-700 dark:text-blue-300">Faltan <strong>{impulseGap.toFixed(0)} puntos</strong> de impulso. Agrega {Math.ceil(impulseGap / 15)} sesion(es) mas o aumenta la intensidad de las existentes.</p>;

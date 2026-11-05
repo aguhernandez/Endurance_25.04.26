@@ -1,4 +1,5 @@
 import { Sport } from '../types/workout';
+import { calculateImpulse, ImpulseStatus, DEFAULT_TAU_ACUTE, DEFAULT_TAU_CHRONIC } from './impulseEngine';
 
 export interface TimeInZones {
   z1?: number;
@@ -61,6 +62,7 @@ export interface WorkoutAnalysisResult {
   classification: 'green' | 'yellow' | 'red';
   impulsePlanned: number;
   impulseActual: number;
+  impulseActualStatus: ImpulseStatus;
   fitness: number;
   fatigue: number;
   form: number;
@@ -70,68 +72,22 @@ export interface WorkoutAnalysisResult {
   wellness: WellnessData | null;
 }
 
-const SPORT_FACTORS: Record<Sport, number> = {
-  cycling: 1.00,
-  running: 1.15,
-  swimming: 0.85,
-};
-
-const TAU_CHRONIC = 42;
-const TAU_ACUTE = 7;
-
-function computeActualImpulse(input: AnalysisInput): number {
-  const durationHours = input.actualDurationMinutes / 60;
-  const sportFactor = SPORT_FACTORS[input.sport] ?? 1.0;
-
-  if (input.avgPowerWatts && input.ftp && input.ftp > 0) {
-    const relIntensity = input.avgPowerWatts / input.ftp;
-    return Math.round(durationHours * relIntensity * sportFactor * 100) / 100;
-  }
-
-  if (input.actualAvgIntensityPctFtp && input.actualAvgIntensityPctFtp > 0) {
-    const relIntensity = input.actualAvgIntensityPctFtp / 100;
-    return Math.round(durationHours * relIntensity * sportFactor * 100) / 100;
-  }
-
-  if (input.avgPacePerKm && input.thresholdPacePerKm && input.avgPacePerKm > 0) {
-    const relIntensity = input.thresholdPacePerKm / input.avgPacePerKm;
-    return Math.round(durationHours * relIntensity * sportFactor * 100) / 100;
-  }
-
-  if (input.timeInZones) {
-    return computeImpulseFromZones(input.timeInZones, sportFactor);
-  }
-
-  if (input.perceivedEffort && input.perceivedEffort > 0) {
-    const relIntensity = input.perceivedEffort / 10;
-    return Math.round(durationHours * relIntensity * sportFactor * 100) / 100;
-  }
-
-  return Math.round(durationHours * 0.65 * sportFactor * 100) / 100;
-}
-
-const ZONE_INTENSITY_MAP: Record<number, number> = {
-  1: 0.55,
-  2: 0.70,
-  3: 0.83,
-  4: 0.95,
-  5: 1.10,
-  6: 1.20,
-  7: 1.35,
-};
-
-function computeImpulseFromZones(zones: TimeInZones, sportFactor: number): number {
-  let totalImpulse = 0;
-  const entries = Object.entries(zones) as [string, number][];
-
-  for (const [key, seconds] of entries) {
-    if (!seconds || seconds <= 0) continue;
-    const zoneNum = parseInt(key.replace('z', ''));
-    const intensity = ZONE_INTENSITY_MAP[zoneNum] ?? 0.75;
-    totalImpulse += (seconds / 3600) * intensity * sportFactor;
-  }
-
-  return Math.round(totalImpulse * 100) / 100;
+function computeActualImpulse(input: AnalysisInput): { value: number; status: ImpulseStatus } {
+  const avgPower = input.avgPowerWatts ?? (
+    input.actualAvgIntensityPctFtp && input.ftp
+      ? input.ftp * input.actualAvgIntensityPctFtp / 100
+      : null
+  );
+  const result = calculateImpulse({
+    sport: input.sport,
+    durationMinutes: input.actualDurationMinutes,
+    avgPowerWatts: avgPower,
+    ftp: input.ftp,
+    avgPacePerKm: input.avgPacePerKm,
+    thresholdPacePerKm: input.thresholdPacePerKm,
+  });
+  if (result.impulse == null) throw new Error("Insufficient data to calculate actual Impulse");
+  return { value: result.impulse, status: result.status };
 }
 
 function updateBanister(
@@ -139,8 +95,8 @@ function updateBanister(
   currentFatigue: number,
   impulse: number
 ): { fitness: number; fatigue: number; form: number } {
-  const newFitness = currentFitness + (impulse - currentFitness) / TAU_CHRONIC;
-  const newFatigue = currentFatigue + (impulse - currentFatigue) / TAU_ACUTE;
+  const newFitness = currentFitness + (impulse - currentFitness) / DEFAULT_TAU_CHRONIC;
+  const newFatigue = currentFatigue + (impulse - currentFatigue) / DEFAULT_TAU_ACUTE;
   return {
     fitness: Math.round(newFitness * 1000) / 1000,
     fatigue: Math.round(newFatigue * 1000) / 1000,
@@ -267,9 +223,9 @@ function buildDeviations(
 
 function generateInsights(
   input: AnalysisInput,
-  completionScore: number,
-  intensityScore: number,
-  loadScore: number,
+  _completionScore: number,
+  _intensityScore: number,
+  _loadScore: number,
   finalScore: number,
   deviations: Deviation[],
   newForm: number,
@@ -337,7 +293,8 @@ function generateInsights(
 }
 
 export function analyzeWorkout(input: AnalysisInput): WorkoutAnalysisResult {
-  const impulseActual = computeActualImpulse(input);
+  const actual = computeActualImpulse(input);
+  const impulseActual = actual.value;
   const impulsePlanned = input.plannedImpulse ?? 0;
 
   const completionScore = scoreCompletion(input.plannedDurationMinutes, input.actualDurationMinutes);
@@ -387,6 +344,7 @@ export function analyzeWorkout(input: AnalysisInput): WorkoutAnalysisResult {
     classification,
     impulsePlanned,
     impulseActual,
+    impulseActualStatus: actual.status,
     fitness,
     fatigue,
     form,

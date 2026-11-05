@@ -157,6 +157,8 @@ export function useWeeklyAtpSummary(athleteId: string | null | undefined): Weekl
         setSessionsPerWeek(Math.max(1, trainingDays));
       }
     } catch (err) {
+      setAllWeeks([]);
+      setCurrentWeek(null);
       console.error('Error loading weekly ATP summary:', err);
     } finally {
       setLoading(false);

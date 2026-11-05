@@ -29,7 +29,8 @@ function PassportStatBox({ icon: Icon, label, value, color, bg }: {
 
 function PassportCard({ snapshot }: { snapshot: PassportSnapshot }) {
   const [expanded, setExpanded] = useState(false);
-  const p = snapshot.passport;
+  const p = snapshot.passport.active_passport;
+  if (!p) return null;
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden mt-4">
@@ -103,7 +104,7 @@ function PassportCard({ snapshot }: { snapshot: PassportSnapshot }) {
                 <span className={`font-semibold ${
                   p.force_velocity.fv_imbalance_direction === 'balanced' ? 'text-emerald-600' : 'text-amber-600'
                 }`}>
-                  {p.force_velocity.fv_imbalance_direction.replace('_', ' ')} ({p.force_velocity.fv_imbalance_percent}%)
+                  {p.force_velocity.fv_imbalance_direction?.replace('_', ' ')} ({p.force_velocity.fv_imbalance_percent}%)
                 </span>
               </p>
             </div>
@@ -123,8 +124,7 @@ export default function AthletesView() {
   const [showProgramModal, setShowProgramModal] = useState(false);
 
   const coachHubId = user?.id;
-  const assignedAthletes = (user as any)?.assigned_athletes as string[] | undefined;
-  const { athletes, loading, refresh: refreshAthletes } = useCoachAthletes(coachHubId, assignedAthletes);
+  const { athletes, loading } = useCoachAthletes(coachHubId);
 
   const { physiology, refetch: refetchPhysiology } = useAthletePhysiology(selectedAthlete?.id);
   const { snapshot: passportSnapshot, loading: passportLoading, error: passportError, fetchPassport } = useHubPassport();
@@ -250,7 +250,7 @@ export default function AthletesView() {
                         </div>
                         <div>
                           <p className="text-2xl font-bold text-white">{stats.totalLoad}</p>
-                          <p className="text-xs text-gray-400">weekly load</p>
+                          <p className="text-xs text-gray-400">weekly Impulse</p>
                         </div>
                       </div>
                       {selectedAthlete.hub_user_id && (

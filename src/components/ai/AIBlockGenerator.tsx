@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Sparkles, X, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Zap, TrendingUp, Calendar, AlertTriangle, CalendarPlus, Loader2, Bike, PersonStanding, Waves, Trophy } from 'lucide-react';
-import { useAIBlock, AIGeneratedBlock, AIBlockWeek, GenerateBlockOptions } from '../../hooks/useAIBlock';
+import { useAIBlock, AIGeneratedBlock, AIBlockWeek, GenerateBlockOptions, EditableAIBlock } from '../../hooks/useAIBlock';
+import { buildPlannerAlerts, SmartPlannerHubContext } from '../../lib/smartPlanner';
 
 const DAY_NAMES = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -101,7 +102,7 @@ function SelectChip({
   );
 }
 
-function BlockWeekCard({ week, index }: { week: AIBlockWeek; index: number }) {
+function BlockWeekCard({ week, index, editable = false, onSessionChange }: { week: AIBlockWeek; index: number; editable?: boolean; onSessionChange?: (sessionIndex: number, updates: Partial<AIBlockWeek['sessions'][number]>) => void }) {
   const [expanded, setExpanded] = useState(index === 0);
   const mc = MICROCYCLE_LABELS[week.microcycle_type] || MICROCYCLE_LABELS.load;
 
@@ -134,13 +135,15 @@ function BlockWeekCard({ week, index }: { week: AIBlockWeek; index: number }) {
           )}
           <div className="space-y-2">
             {week.sessions.map((session, si) => (
-              <div key={si} className="flex gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+                <div key={si} className="flex gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800/50">
                 <div className="flex-shrink-0 w-10 text-center">
                   <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{DAY_NAMES[session.day_of_week] || `D${session.day_of_week}`}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="font-semibold text-sm text-gray-900 dark:text-white">{session.session_name}</span>
+                    {editable ? (
+                      <input value={session.session_name} onChange={e => onSessionChange?.(si, { session_name: e.target.value })} className="font-semibold text-sm min-w-0 flex-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white" />
+                    ) : <span className="font-semibold text-sm text-gray-900 dark:text-white">{session.session_name}</span>}
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${SPORT_COLORS[session.sport] || 'bg-gray-100 text-gray-600'}`}>
                       {session.sport}
                     </span>
@@ -148,11 +151,13 @@ function BlockWeekCard({ week, index }: { week: AIBlockWeek; index: number }) {
                       {session.category}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">{session.description}</p>
+                  {editable ? (
+                    <textarea value={session.description} onChange={e => onSessionChange?.(si, { description: e.target.value })} rows={2} className="w-full text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white mb-2" />
+                  ) : <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">{session.description}</p>}
                   <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-2">
                     <span className="flex items-center gap-1">
                       <Clock size={10} />
-                      {session.estimated_duration_minutes} min
+                      {editable ? <input type="number" min={1} value={session.estimated_duration_minutes} onChange={e => onSessionChange?.(si, { estimated_duration_minutes: Math.max(1, Number(e.target.value) || 1) })} className="w-16 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-1 py-0.5 text-gray-900 dark:text-white" /> : session.estimated_duration_minutes} min
                     </span>
                     <span className="flex items-center gap-1">
                       <Zap size={10} />
@@ -186,11 +191,12 @@ function BlockWeekCard({ week, index }: { week: AIBlockWeek; index: number }) {
 }
 
 function BlockCard({
-  block, onAccept, onReject, onApplyToCalendar, applying, applyResult, isCoach,
+  block, onAccept, onReject, onEdit, onApplyToCalendar, applying, applyResult, isCoach,
 }: {
   block: AIGeneratedBlock;
   onAccept: (id: string, feedback?: string) => void;
   onReject: (id: string, feedback?: string) => void;
+  onEdit: (id: string, editedBlock: EditableAIBlock) => void;
   onApplyToCalendar: (id: string) => void;
   applying: boolean;
   applyResult: { success: boolean; insertedCount: number; errors: string[] } | null;
@@ -200,6 +206,12 @@ function BlockCard({
   const [feedback, setFeedback] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
   const [confirmApply, setConfirmApply] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftWeeks, setDraftWeeks] = useState(block.weeks);
+
+  const draftBlock: EditableAIBlock = { weeks: draftWeeks };
+  const plannerContext = block.context_summary?.hub_context as SmartPlannerHubContext | undefined;
+  const alerts = buildPlannerAlerts(plannerContext, draftBlock);
 
   const statusConfig = {
     pending: { icon: <Clock size={13} />, label: 'Pending review', color: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20' },
@@ -258,10 +270,17 @@ function BlockCard({
           )}
 
           <div className="space-y-2">
-            {block.weeks.map((week, i) => (
-              <BlockWeekCard key={week.week_number} week={week} index={i} />
+            {draftWeeks.map((week, i) => (
+              <BlockWeekCard key={week.week_number} week={week} index={i} editable={editing} onSessionChange={(sessionIndex, updates) => setDraftWeeks(previous => previous.map((item, weekIndex) => weekIndex !== i ? item : { ...item, sessions: item.sessions.map((session, index) => index === sessionIndex ? { ...session, ...updates } : session) }))} />
             ))}
           </div>
+
+          {(alerts.warnings.length > 0 || alerts.blocks.length > 0) && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+              <div className="font-semibold mb-1">Planner alerts</div>
+              {[...alerts.blocks, ...alerts.warnings].map((alert, index) => <div key={index}>• {alert}</div>)}
+            </div>
+          )}
 
           {block.athlete_feedback && (
             <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
@@ -283,8 +302,11 @@ function BlockCard({
             </div>
           )}
 
-          {(block.status === 'pending' || block.status === 'accepted') && block.status !== 'applied' && (
+          {(block.status === 'pending' || block.status === 'accepted') && (
             <div className="space-y-3">
+              {block.status === 'pending' && <button onClick={() => { if (editing) onEdit(block.id, draftBlock); setEditing(value => !value); }} className="w-full py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">
+                {editing ? 'Finish editing proposal' : 'Edit proposal'}
+              </button>}
               {showFeedback ? (
                 <div className="space-y-2">
                   <textarea
@@ -296,6 +318,7 @@ function BlockCard({
                   />
                   <div className="flex gap-2">
                     <button
+                      disabled={editing}
                       onClick={() => onAccept(block.id, feedback || undefined)}
                       className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors"
                     >
@@ -316,6 +339,7 @@ function BlockCard({
                   {block.status === 'pending' && (
                     <div className="flex gap-2">
                       <button
+                        disabled={editing}
                         onClick={() => onAccept(block.id)}
                         className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors"
                       >
@@ -337,7 +361,7 @@ function BlockCard({
                     </div>
                   )}
 
-                  {!confirmApply ? (
+                  {block.status === 'accepted' && !confirmApply && alerts.blocks.length === 0 && (
                     <button
                       onClick={() => setConfirmApply(true)}
                       disabled={applying}
@@ -346,7 +370,8 @@ function BlockCard({
                       <CalendarPlus size={14} />
                       Apply to Calendar
                     </button>
-                  ) : (
+                  )}
+                  {block.status === 'accepted' && confirmApply && (
                     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-3 space-y-3">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">Apply {totalSessions} sessions to the calendar?</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -375,6 +400,10 @@ function BlockCard({
             </div>
           )}
 
+          {block.status === 'pending' && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">Approve the proposal before publishing it to the calendar.</p>
+          )}
+
           {block.status === 'applied' && (
             <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl px-4 py-3">
               <CheckCircle size={14} />
@@ -394,7 +423,7 @@ export default function AIBlockGenerator({
   requestedByRole,
   onClose,
 }: AIBlockGeneratorProps) {
-  const { blocks, settings, loading, generating, error, generateBlock, updateBlockStatus, applyBlockToCalendar } = useAIBlock(athleteId);
+  const { blocks, settings, loading, generating, error, generateBlock, updateBlockStatus, editBlock, applyBlockToCalendar } = useAIBlock(athleteId);
 
   const [showForm, setShowForm] = useState(false);
 
@@ -413,7 +442,6 @@ export default function AIBlockGenerator({
     return d.toISOString().split('T')[0];
   });
 
-  const [generatedBlock, setGeneratedBlock] = useState<AIGeneratedBlock | null>(null);
   const [applyingBlockId, setApplyingBlockId] = useState<string | null>(null);
   const [applyResults, setApplyResults] = useState<Record<string, { success: boolean; insertedCount: number; errors: string[] }>>({});
 
@@ -445,7 +473,6 @@ export default function AIBlockGenerator({
     };
     const block = await generateBlock(options);
     if (block) {
-      setGeneratedBlock(block);
       setShowForm(false);
     }
   };
@@ -456,6 +483,10 @@ export default function AIBlockGenerator({
 
   const handleReject = async (blockId: string, feedback?: string) => {
     await updateBlockStatus(blockId, 'rejected', feedback);
+  };
+
+  const handleEdit = async (blockId: string, editedBlock: EditableAIBlock) => {
+    await editBlock(blockId, editedBlock);
   };
 
   const handleApplyToCalendar = async (blockId: string) => {
@@ -749,6 +780,7 @@ export default function AIBlockGenerator({
                   block={block}
                   onAccept={handleAccept}
                   onReject={handleReject}
+                  onEdit={handleEdit}
                   onApplyToCalendar={handleApplyToCalendar}
                   applying={applyingBlockId === block.id}
                   applyResult={applyResults[block.id] ?? null}
@@ -767,6 +799,7 @@ export default function AIBlockGenerator({
                   block={block}
                   onAccept={handleAccept}
                   onReject={handleReject}
+                  onEdit={handleEdit}
                   onApplyToCalendar={handleApplyToCalendar}
                   applying={applyingBlockId === block.id}
                   applyResult={applyResults[block.id] ?? null}

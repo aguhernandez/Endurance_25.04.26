@@ -102,7 +102,7 @@ export async function generateAndStoreAdaptation(params: {
         rationale: proposal.rationale,
         safety_flags: proposal.safetyFlags.length > 0 ? proposal.safetyFlags : null,
         status: 'pending',
-        input_snapshot: proposal.inputSnapshot as Record<string, unknown>,
+        input_snapshot: { ...proposal.inputSnapshot },
       })
       .select()
       .single();

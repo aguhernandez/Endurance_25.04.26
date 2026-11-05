@@ -18,7 +18,7 @@ interface AthleteOption {
   email: string;
 }
 
-export default function CoachDashboard({ onNavigate }: CoachDashboardProps) {
+export default function CoachDashboard(_props: CoachDashboardProps) {
   const { profile } = useAuth();
   const [athletes, setAthletes] = useState<AthleteOption[]>([]);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');

@@ -1,16 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Sport } from '../types/workout';
-import {
-  DailyImpulseEntry,
-  SSRResult,
-  CUResult,
-  SessionImpulseInput,
-  calculateSessionImpulse,
-  computeSSR,
-  computeCapacityUtilization,
-  reconstructCAAndAL,
-} from '../lib/sessionDifficulty';
+import { calculateDifficulty, calculateImpulse, reconstructLoadState } from '../lib/impulseEngine';
+import type { DailyImpulseEntry, SSRResult, ImpulseInput } from '../lib/impulseEngine';
 
 interface SessionForDifficulty {
   session_date: string;
@@ -59,17 +51,17 @@ function buildDailyImpulses(
   for (const s of sessions) {
     if (s.status !== 'completed') continue;
 
-    const input: SessionImpulseInput = {
+    const input: ImpulseInput = {
       durationMinutes: s.duration_minutes,
       sport: s.sport,
       avgPowerWatts: s.avg_power_watts,
       ftp,
       avgPacePerKm: s.avg_pace_per_km,
       thresholdPacePerKm: getThresholdPace(s.sport, physiology),
-      perceivedEffort: s.perceived_effort,
     };
 
-    const impulse = calculateSessionImpulse(input);
+    const impulse = calculateImpulse(input).impulse;
+    if (impulse == null) continue;
     const existing = map.get(s.session_date) ?? 0;
     map.set(s.session_date, existing + impulse);
   }
@@ -79,7 +71,6 @@ function buildDailyImpulses(
 
 export interface SessionMetrics {
   ssr: SSRResult;
-  cu: CUResult;
 }
 
 export interface UseDifficultyResult {
@@ -141,29 +132,27 @@ export function useSessionDifficulty(
       if (!isReady) return null;
 
       const sessionFtp = session.ftp ?? ftp;
-      const input: SessionImpulseInput = {
+      const input: ImpulseInput = {
         durationMinutes: session.duration_minutes,
         sport: session.sport,
         avgPowerWatts: session.avg_power_watts,
         ftp: sessionFtp,
         avgPacePerKm: session.avg_pace_per_km,
         thresholdPacePerKm: getThresholdPace(session.sport, physiology),
-        perceivedEffort: session.perceived_effort,
       };
 
-      const sessionImpulse = calculateSessionImpulse(input);
+      const sessionImpulse = calculateImpulse(input).impulse;
+      if (sessionImpulse == null) return null;
 
       const targetDate = referenceDate ?? session.session_date;
       const impulsesBeforeSession = dailyImpulses.filter(
         (d) => d.date < targetDate
       );
 
-      const { ca, al } = reconstructCAAndAL(impulsesBeforeSession, targetDate);
-      const rb = ca - al;
-
-      if (ca <= 0) return null;
-
-      return computeSSR(sessionImpulse, ca, rb);
+      const state = reconstructLoadState(impulsesBeforeSession, targetDate);
+      const difficulty = calculateDifficulty(sessionImpulse, state);
+      if (difficulty.difficulty == null || difficulty.ratio == null) return null;
+      return { sessionImpulse, currentCA: state.ca, ssr: difficulty.ratio, difficulty: difficulty.difficulty };
     },
     [isReady, dailyImpulses, ftp, physiology, referenceDate]
   );
@@ -173,32 +162,27 @@ export function useSessionDifficulty(
       if (!isReady) return null;
 
       const sessionFtp = session.ftp ?? ftp;
-      const input: SessionImpulseInput = {
+      const input: ImpulseInput = {
         durationMinutes: session.duration_minutes,
         sport: session.sport,
         avgPowerWatts: session.avg_power_watts,
         ftp: sessionFtp,
         avgPacePerKm: session.avg_pace_per_km,
         thresholdPacePerKm: getThresholdPace(session.sport, physiology),
-        perceivedEffort: session.perceived_effort,
       };
 
-      const sessionImpulse = calculateSessionImpulse(input);
+      const sessionImpulse = calculateImpulse(input).impulse;
+      if (sessionImpulse == null) return null;
 
       const targetDate = referenceDate ?? session.session_date;
       const impulsesBeforeSession = dailyImpulses.filter(
         (d) => d.date < targetDate
       );
 
-      const { ca, al } = reconstructCAAndAL(impulsesBeforeSession, targetDate);
-      const rb = ca - al;
-
-      if (ca <= 0) return null;
-
-      const ssr = computeSSR(sessionImpulse, ca, rb);
-      const cu = computeCapacityUtilization(sessionImpulse, ca, session.sport);
-
-      return { ssr, cu };
+      const state = reconstructLoadState(impulsesBeforeSession, targetDate);
+      const difficulty = calculateDifficulty(sessionImpulse, state);
+      if (difficulty.difficulty == null || difficulty.ratio == null) return null;
+      return { ssr: { sessionImpulse, currentCA: state.ca, ssr: difficulty.ratio, difficulty: difficulty.difficulty } };
     },
     [isReady, dailyImpulses, ftp, physiology, referenceDate]
   );
